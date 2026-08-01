@@ -234,13 +234,23 @@ fun LauncherScreen(
                 ) {
                     if (isTopShelfFocused) {
                         if (primaryChannel != null) {
-                            ContentCarousel(
-                                channel = primaryChannel,
-                                onProgramClick = viewModel::onProgramClick,
-                                focusRequester = carouselFocusRequester,
-                                upFocusRequester = settingsFocusRequester,
-                                modifier = Modifier.fillMaxSize(),
-                            )
+                            // Rapid dock navigation can swap `primaryChannel`
+                            // several times within one poster's hold window.
+                            // `key()` forces a full dispose/recompose of the
+                            // carousel on each channel change instead of
+                            // relying on its internal `remember(channel)` to
+                            // reset in place — the latter left the auto-scroll
+                            // timer permanently orphaned after fast channel
+                            // churn (user-reported: "auto-scrolling stopped").
+                            androidx.compose.runtime.key(primaryChannel) {
+                                ContentCarousel(
+                                    channel = primaryChannel,
+                                    onProgramClick = viewModel::onProgramClick,
+                                    focusRequester = carouselFocusRequester,
+                                    upFocusRequester = settingsFocusRequester,
+                                    modifier = Modifier.fillMaxSize(),
+                                )
+                            }
                         } else {
                             HeroBanner(
                                 activeApp = focusedApp,

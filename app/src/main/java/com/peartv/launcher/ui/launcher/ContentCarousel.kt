@@ -124,19 +124,18 @@ fun ContentCarousel(
 
     var index by remember(channel) { mutableIntStateOf(0) }
     var phase by remember(channel) { mutableStateOf(CarouselPhase.Poster) }
+    // Single-program channels advance() back to the same index, and Compose
+    // skips the state write when the value is unchanged — so LaunchedEffect
+    // keyed on `index` alone would never restart. `cycle` always changes.
+    var cycle by remember(channel) { mutableIntStateOf(0) }
     val program = channel.programs.getOrNull(index) ?: return
 
     fun advance(delta: Int) {
         index = (index + delta).mod(channel.programs.size)
+        cycle++
     }
 
-    // Diagnostic (user-reported: "auto-scroll seems to stop after a few
-    // minutes") — logs every tick of the hold/advance cycle so a future
-    // occurrence shows exactly where it actually stalls (screensaver and
-    // screen-off timeout were both checked and ruled out on-device: this
-    // Shield has the system screensaver disabled and a 2-hour screen-off
-    // timeout, neither of which explains a few-minute stall).
-    LaunchedEffect(index) {
+    LaunchedEffect(index, cycle) {
         Log.d(TAG, "${channel.displayName}: showing index=$index/${channel.programs.size - 1} '${program.title}'")
         phase = CarouselPhase.Poster
         delay(PosterHoldMillis)
