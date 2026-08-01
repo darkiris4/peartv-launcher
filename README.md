@@ -1,3 +1,7 @@
+<p align="center">
+  <img width="140" height="140" alt="PearTV Launcher logo" src="./docs/assets/logo.png" />
+</p>
+
 # PearTV Launcher
 
 A custom Android TV home launcher built for tvOS-grade D-pad responsiveness — smooth spring-based motion, real Home Screen Channels content, and a full-screen auto-advancing content carousel, all running on an NVIDIA Shield TV Pro.
