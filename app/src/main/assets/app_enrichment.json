@@ -1,0 +1,45 @@
+[
+  {
+    "packageName": "com.apple.atve.androidtv.appletv",
+    "accentColor": "#000000",
+    "tmdbProviderId": 350
+  },
+  {
+    "packageName": "org.jellyfin.androidtv",
+    "accentColor": "#000000"
+  },
+  {
+    "packageName": "com.hulu.livingroomplus",
+    "accentColor": "#000000",
+    "tmdbProviderId": 15
+  },
+  {
+    "packageName": "com.disney.disneyplus",
+    "accentColor": "#000000",
+    "tmdbProviderId": 337
+  },
+  {
+    "packageName": "com.peacocktv.peacockandroid",
+    "accentColor": "#F5A623",
+    "tmdbProviderId": 386
+  },
+  {
+    "packageName": "com.cbs.app",
+    "accentColor": "#0064FF",
+    "tmdbProviderId": 531
+  },
+  {
+    "packageName": "com.amazon.avod.thirdpartyclient",
+    "accentColor": "#000000",
+    "tmdbProviderId": 9
+  },
+  {
+    "packageName": "com.google.android.youtube.tv",
+    "accentColor": "#FFFFFF",
+    "tmdbProviderId": 192
+  },
+  {
+    "packageName": "com.retroarch",
+    "accentColor": "#5E5E5E"
+  }
+]

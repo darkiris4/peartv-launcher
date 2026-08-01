@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- PRODUCT_SPEC.md §2.1 — required=true declares this as a TV-first
+         app; touchscreen required=false is what makes it eligible to be
+         listed/selected as an Android TV home launcher at all. -->
+    <uses-feature
+        android:name="android.software.leanback"
+        android:required="true" />
+    <uses-feature
+        android:name="android.hardware.touchscreen"
+        android:required="false" />
+
+    <!-- PRODUCT_SPEC.md §3.1.1 Tier 1 — TMDB Discover API calls for curated
+         apps' hero backdrop art, and Coil's own remote image fetch for that
+         art once a URL is known. -->
+    <uses-permission android:name="android.permission.INTERNET" />
+
+    <!-- PRODUCT_SPEC.md §2.4/§3.1.1 Tier 3 — a special/appop-gated permission
+         (not a runtime dialog), granted from this app's own Settings ->
+         "Open app settings" CTA. Reading Home Screen Channels data published
+         by *other* apps requires this; without it, Tier 3 queries simply
+         return no data (degrades to Tier 1/2), never a crash. -->
+    <uses-permission android:name="android.permission.READ_TV_LISTINGS" />
+
+    <!-- Required on API 30+: without this, PackageManager.queryIntentActivities()
+         in LauncherAppRepositoryImpl (§3.2) is silently filtered down to only
+         a handful of apps Android auto-exempts (Play Store, system Settings),
+         confirmed on-device via `adb logcat`'s AppsFilter "BLOCKED" entries
+         for every other installed leanback app. Holding the Home role grants
+         this visibility automatically too, but that's only true once the app
+         is actually set as the default launcher — this <queries> declaration
+         makes app enumeration correct even before that, and is the documented
+         way to ask for this visibility rather than relying on an implicit,
+         state-dependent exemption. -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
+        </intent>
+    </queries>
+
+    <application
+        android:name=".PearTvLauncherApplication"
+        android:allowBackup="false"
+        android:banner="@drawable/ic_launcher_banner"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:theme="@style/Theme.PearTvLauncher"
+        android:hardwareAccelerated="true">
+
+        <!-- PRODUCT_SPEC.md §2.1 — CATEGORY_HOME + CATEGORY_LEANBACK_LAUNCHER
+             is a true launcher replacement (ACTION_MAIN/CATEGORY_HOME
+             resolution), not an accessibility overlay. singleTask keeps this
+             a normal, killable/restorable task per TV OS convention — it is
+             deliberately NOT excluded from recents. -->
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:launchMode="singleTask"
+            android:screenOrientation="landscape"
+            android:theme="@style/Theme.PearTvLauncher">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.HOME" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+    </application>
+
+</manifest>

@@ -1,0 +1,25 @@
+<resources>
+    <!-- Minimal pre-Compose theme — MainActivity's content is 100% Compose
+         (see ui/theme/Theme.kt for the real design system). This only needs
+         to set the window background so there's no flash before the first
+         Compose frame lands.
+
+         Two variants, not one: the app's theme is a persisted user toggle
+         (not system light/dark), so MainActivity picks between these via
+         `setTheme()` using a value read synchronously from DataStore before
+         `super.onCreate()` — see MainActivity's `initialDarkTheme`. Without
+         a light variant, a light-theme user's cold launch painted this dark
+         windowBackground first, then had the entire Compose UI pop from
+         dark to light once the (async) theme preference finished loading —
+         a whole-UI color flash on every launch that dark-theme users never
+         saw, since their default already matched. -->
+    <style name="Theme.PearTvLauncher" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/peartv_background</item>
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:windowFullscreen">true</item>
+    </style>
+
+    <style name="Theme.PearTvLauncher.Light" parent="Theme.PearTvLauncher">
+        <item name="android:windowBackground">@color/peartv_background_light</item>
+    </style>
+</resources>

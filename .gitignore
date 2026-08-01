@@ -1,0 +1,19 @@
+# Build outputs
+*/build/
+build/
+.gradle/
+
+# Local machine config — sdk.dir is environment-specific
+local.properties
+
+# Android Studio / IntelliJ
+.idea/
+*.iml
+.DS_Store
+
+# Baseline Profile module scaffolding (Android Studio-generated, not yet added)
+captures/
+.cxx/
+
+# Design references — visual reference material only, not app assets
+design/

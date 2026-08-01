@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Debug-only manifest fragment, merged only into debug builds (standard AGP
+  source-set behavior — never ships in release). Exists solely to verify
+  PRODUCT_SPEC.md §2.4/§3.1.1 Tier 3 (Home Screen Channels) end-to-end: no
+  installed app on the reference Shield currently publishes real channel
+  data, so `TestChannelSeederReceiver` publishes a synthetic one under this
+  app's own identity for on-device verification via `adb shell am broadcast`.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- Normal protection level — required to write to TvProvider at all;
+         only needed by the debug-only seeder below. -->
+    <uses-permission android:name="com.android.providers.tv.permission.WRITE_EPG_DATA" />
+
+    <application>
+        <receiver
+            android:name=".debug.TestChannelSeederReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="com.peartv.launcher.debug.SEED_TEST_CHANNEL" />
+                <action android:name="com.peartv.launcher.debug.CLEAR_TEST_CHANNEL" />
+            </intent-filter>
+        </receiver>
+    </application>
+</manifest>
