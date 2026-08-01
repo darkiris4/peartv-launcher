@@ -209,7 +209,7 @@ fun ContentCarousel(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(Brush.horizontalGradient(listOf(backgroundColor, Color.Transparent))),
+                .background(Brush.horizontalGradient(listOf(backgroundColor.copy(alpha = 0.5f), Color.Transparent))),
         )
 
         ProgramMetadata(
