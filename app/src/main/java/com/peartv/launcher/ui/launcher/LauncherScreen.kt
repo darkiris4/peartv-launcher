@@ -246,6 +246,7 @@ fun LauncherScreen(
                                 ContentCarousel(
                                     channel = primaryChannel,
                                     onProgramClick = viewModel::onProgramClick,
+                                    resolveBackdropUrl = viewModel::resolveTmdbBackdropUrl,
                                     focusRequester = carouselFocusRequester,
                                     upFocusRequester = settingsFocusRequester,
                                     modifier = Modifier.fillMaxSize(),

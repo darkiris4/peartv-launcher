@@ -9,6 +9,8 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
@@ -16,6 +18,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -25,6 +28,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.Key
@@ -60,6 +64,20 @@ private const val CarouselCrossfadeMillis = 400
 
 /** Ambient/background trailer playback — deliberately silent by default (this is a passively-cycling home-screen surface, not something the user opened to watch); flip if that reads wrong on-device. */
 private const val TrailerMuted = true
+
+/**
+ * Poster quality — confirmed on-device (real published channel data):
+ * Apple TV/Hulu's `ASPECT_RATIO_16_9` (1.78) art crops full-bleed fine; Plex
+ * publishes portrait movie-poster art (`ASPECT_RATIO_MOVIE_POSTER`, 0.667)
+ * that badly crops if forced full-bleed the same way. 1.2 sits cleanly
+ * between the two real values seen — comfortably below every landscape
+ * ratio this app's aspect-ratio map produces, comfortably above every
+ * portrait/square one.
+ */
+private const val LandscapeAspectRatioThreshold = 1.2f
+
+/** How much of the screen's height a portrait/square poster's own inset art occupies when there's no TMDB backdrop to swap in instead — large enough to read clearly, small enough to leave room for ProgramMetadata below. */
+private const val PortraitInsetHeightFraction = 0.55f
 
 private const val TAG = "ContentCarousel"
 
@@ -116,6 +134,7 @@ private enum class CarouselPhase { Poster, Trailer }
 fun ContentCarousel(
     channel: AppChannel,
     onProgramClick: (ChannelProgram) -> Unit,
+    resolveBackdropUrl: suspend (title: String) -> String?,
     focusRequester: FocusRequester,
     upFocusRequester: FocusRequester,
     modifier: Modifier = Modifier,
@@ -145,6 +164,24 @@ fun ContentCarousel(
         } else {
             Log.d(TAG, "${channel.displayName}: index=$index no trailer, advancing")
             advance(1)
+        }
+    }
+
+    // Poster quality — resolved independently of the hold/advance timer
+    // above (its own effect, not folded into the one above) so a slow TMDB
+    // lookup never delays the poster hold itself. Keyed on `index` alone,
+    // not `cycle`: a network fetch is idempotent and cache-checked below, so
+    // re-running it for the single-item edge case the `cycle` counter above
+    // exists for is harmless, not incorrect. Landscape art never attempts a
+    // lookup at all — Apple TV/Hulu's own art is already the right shape;
+    // only portrait/square art (confirmed on real Plex data) tries a swap-in.
+    val resolvedBackdrops = remember(channel) { mutableStateMapOf<Int, String?>() }
+    LaunchedEffect(index) {
+        if (resolvedBackdrops.containsKey(index)) return@LaunchedEffect
+        resolvedBackdrops[index] = if (program.posterAspectRatio < LandscapeAspectRatioThreshold) {
+            resolveBackdropUrl(program.title)
+        } else {
+            null
         }
     }
 
@@ -191,7 +228,7 @@ fun ContentCarousel(
         ) { (crossfadeIndex, crossfadePhase) ->
             val crossfadeProgram = channel.programs.getOrNull(crossfadeIndex) ?: return@Crossfade
             when (crossfadePhase) {
-                CarouselPhase.Poster -> PosterBackdrop(crossfadeProgram)
+                CarouselPhase.Poster -> PosterBackdrop(crossfadeProgram, resolvedBackdrops[crossfadeIndex])
                 CarouselPhase.Trailer -> TrailerPlayer(
                     uri = crossfadeProgram.previewVideoUri.orEmpty(),
                     onEnded = { advance(1) },
@@ -225,21 +262,79 @@ fun ContentCarousel(
     }
 }
 
+/**
+ * Poster quality (confirmed on real published channel data — see
+ * [LandscapeAspectRatioThreshold]'s doc): landscape art (or a [resolvedBackdropUrl]
+ * TMDB swap-in, which is always a landscape backdrop) fills full-bleed same
+ * as before. Portrait/square art with no swap-in available gets
+ * [PortraitPosterBackdrop] instead of being force-cropped into
+ * unrecognizability.
+ */
 @Composable
-private fun PosterBackdrop(program: ChannelProgram) {
+private fun PosterBackdrop(program: ChannelProgram, resolvedBackdropUrl: String?) {
     val posterUri = program.posterArtUri
-    if (posterUri != null) {
-        AsyncImage(
+    when {
+        resolvedBackdropUrl != null -> AsyncImage(
+            model = resolvedBackdropUrl,
+            contentDescription = program.title,
+            contentScale = ContentScale.Crop,
+            modifier = Modifier.fillMaxSize(),
+        )
+        posterUri == null -> Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(MaterialTheme.colorScheme.surfaceVariant),
+        )
+        program.posterAspectRatio >= LandscapeAspectRatioThreshold -> AsyncImage(
             model = posterUri,
             contentDescription = program.title,
             contentScale = ContentScale.Crop,
             modifier = Modifier.fillMaxSize(),
         )
-    } else {
+        else -> PortraitPosterBackdrop(posterUri, program.title, program.posterAspectRatio)
+    }
+}
+
+/**
+ * tvOS's own real treatment for portrait-shaped art in a landscape hero: the
+ * actual poster, uncropped, over an ambient blurred/darkened wash of itself
+ * — not the same image force-cropped full-bleed, which (confirmed on real
+ * Plex 204×306 art) zooms in and crops away most of the poster horizontally.
+ *
+ * Uses this project's own [blurredBackdrop] (`BackdropBlur.kt`) rather than
+ * `Modifier.blur()` — that file's doc already established `Modifier.blur()`
+ * needs API 31+ (this app's floor is API 30) and that a multi-pass
+ * alternative crashed the renderer on real hardware; this reuses the same
+ * single-pass technique already proven stable on-device elsewhere in this
+ * screen, rather than re-litigating that constraint here.
+ *
+ * The blurred layer is declared *before* the sharp inset poster so the
+ * inset visually sits in front of it, which means it draws one frame before
+ * [recordBackdropSource] below has recorded anything the very first frame —
+ * harmless for a static network image (unlike the live/animating content
+ * [blurredBackdrop]'s own doc is concerned about), since every frame after
+ * the first reads that same unchanging image back.
+ */
+@Composable
+private fun PortraitPosterBackdrop(posterUri: String, title: String, aspectRatio: Float) {
+    val sourceLayer = rememberGraphicsLayer()
+    val lowResLayer = rememberGraphicsLayer()
+    Box(modifier = Modifier.fillMaxSize()) {
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(MaterialTheme.colorScheme.surfaceVariant),
+                .blurredBackdrop(source = sourceLayer, lowResLayer = lowResLayer, sourceOffset = { Offset.Zero })
+                .background(MaterialTheme.colorScheme.background.copy(alpha = 0.6f)),
+        )
+        AsyncImage(
+            model = posterUri,
+            contentDescription = title,
+            contentScale = ContentScale.Fit,
+            modifier = Modifier
+                .align(Alignment.Center)
+                .fillMaxHeight(PortraitInsetHeightFraction)
+                .aspectRatio(aspectRatio)
+                .recordBackdropSource(sourceLayer),
         )
     }
 }

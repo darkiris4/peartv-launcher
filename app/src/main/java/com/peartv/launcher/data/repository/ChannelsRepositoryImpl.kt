@@ -12,7 +12,19 @@ import kotlinx.coroutines.withContext
 
 private const val TAG = "ChannelsRepository"
 
-/** Movie-poster-like fallback (§3.1.1) — used only when a program's own aspect ratio column is unrecognized. */
+/**
+ * Movie-poster-like fallback (§3.1.1) — used when a program's own aspect
+ * ratio column is unrecognized. Confirmed against the real platform jar
+ * (`javap` on `android.media.tv.TvContract$PreviewPrograms`, API 35): the
+ * framework defines exactly five `ASPECT_RATIO_*` constants (0-4, all
+ * present in [AspectRatioByColumnValue] below) — there is no sixth
+ * "movie poster" constant. Plex publishes raw column value `5` for most of
+ * its catalog anyway (confirmed on-device), which is undocumented/
+ * out-of-spec on Plex's part, not a gap in this map. It falls through to
+ * this default, which happens to equal Plex's real portrait art's actual
+ * ratio (204×306 downloaded and measured on-device) — a fortunate
+ * coincidence for that specific value, not something to special-case for.
+ */
 private const val DefaultPosterAspectRatio = 2f / 3f
 
 private val AspectRatioByColumnValue = mapOf(

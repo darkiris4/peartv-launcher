@@ -19,4 +19,14 @@ interface TmdbRepository {
      *   to Tier 2," never as an error to surface to the user.
      */
     suspend fun fetchTrendingBackdrop(providerId: Int, apiKey: String): TmdbBackdrop?
+
+    /**
+     * Tier 3 poster quality — a specific program's [title] (not a provider)
+     * resolved to TMDB's own top search match. There's no
+     * IMDb/TMDB ID or release year in the TvContract data this app reads, so
+     * matching is title-string-only; callers should treat a `null` result as
+     * "this channel's own art is all there is," same as
+     * [fetchTrendingBackdrop]'s `null` contract — never surfaced as an error.
+     */
+    suspend fun searchBackdrop(title: String, apiKey: String): TmdbBackdrop?
 }

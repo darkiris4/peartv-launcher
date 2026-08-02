@@ -27,6 +27,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.launchIn
@@ -226,6 +227,21 @@ class LauncherViewModel(
     fun onProgramClick(program: ChannelProgram) {
         val app = _focusedApp.value ?: return
         launchContent(program.intentUri, app)
+    }
+
+    /**
+     * Tier 3 poster quality — `ContentCarousel`'s best-effort swap-in of a
+     * real landscape TMDB backdrop for a program whose own published art is
+     * portrait/square (confirmed on-device: Plex's movie-poster-shaped art
+     * badly crops when forced full-bleed). `null` whenever no TMDB key is
+     * configured (§4's settings screen — commonly unset, same as
+     * [heroBackdrop]'s Tier 1) or no confident title match exists; the
+     * caller falls back to that program's own art either way, exactly like
+     * Tier 1 falling back to Tier 2.
+     */
+    suspend fun resolveTmdbBackdropUrl(title: String): String? {
+        val apiKey = settingsRepository.tmdbApiKey.first()?.takeIf { it.isNotBlank() } ?: return null
+        return tmdbRepository.searchBackdrop(title, apiKey)?.backdropUrl
     }
 
     // --- Options popover: opened by a single long-press on whatever's focused ---

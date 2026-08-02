@@ -12,6 +12,7 @@ import org.json.JSONObject
 
 private const val TAG = "TmdbRepository"
 private const val DiscoverMovieUrl = "https://api.themoviedb.org/3/discover/movie"
+private const val SearchMovieUrl = "https://api.themoviedb.org/3/search/movie"
 private const val BackdropBaseUrl = "https://image.tmdb.org/t/p/w1280"
 
 /**
@@ -33,6 +34,7 @@ class TmdbRepositoryImpl(
 ) : TmdbRepository {
 
     private val cache = mutableMapOf<Int, TmdbBackdrop>()
+    private val searchCache = mutableMapOf<String, TmdbBackdrop>()
 
     override suspend fun fetchTrendingBackdrop(providerId: Int, apiKey: String): TmdbBackdrop? {
         cache[providerId]?.let { return it }
@@ -64,6 +66,38 @@ class TmdbRepositoryImpl(
                 Log.w(TAG, "TMDB fetch threw for provider $providerId", it)
                 null
             }?.also { cache[providerId] = it }
+        }
+    }
+
+    override suspend fun searchBackdrop(title: String, apiKey: String): TmdbBackdrop? {
+        val cacheKey = title.trim().lowercase()
+        searchCache[cacheKey]?.let { return it }
+
+        return withContext(Dispatchers.IO) {
+            runCatching {
+                val url = SearchMovieUrl.toHttpUrl().newBuilder()
+                    .addQueryParameter("api_key", apiKey)
+                    .addQueryParameter("query", title)
+                    .build()
+                val request = Request.Builder().url(url).build()
+
+                httpClient.newCall(request).execute().use { response ->
+                    if (!response.isSuccessful) {
+                        Log.w(TAG, "TMDB search call failed for \"$title\": HTTP ${response.code}")
+                        return@use null
+                    }
+                    val body = response.body?.string() ?: return@use null
+                    val results = JSONObject(body).optJSONArray("results") ?: return@use null
+                    if (results.length() == 0) return@use null
+                    val result = results.getJSONObject(0)
+                    val backdropPath = result.optString("backdrop_path").ifBlank { null } ?: return@use null
+                    val resultTitle = result.optString("title").ifBlank { null } ?: return@use null
+                    TmdbBackdrop(backdropUrl = "$BackdropBaseUrl$backdropPath", title = resultTitle)
+                }
+            }.getOrElse {
+                Log.w(TAG, "TMDB search threw for \"$title\"", it)
+                null
+            }?.also { searchCache[cacheKey] = it }
         }
     }
 }
