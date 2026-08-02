@@ -144,9 +144,20 @@ const val JiggleDimmedAlpha = 0.7f
 /** Options popover — dim-only treatment (no jiggle) for whichever tile the popover is currently open on, matching the design reference (`design/editHomeScreen.png`): the target tile darkens; Edit Mode/jiggle hasn't started yet at this point. */
 const val OptionsMenuTargetDimAlpha = 0.5f
 
-/** §5 closed folder tile — frosted-glass background (API 30 fallback: flat tint, matching the tray's own SDK-gated blur pattern) plus a mini thumbnail matrix. */
+/**
+ * §5 closed folder tile — frosted-glass background (API 30 fallback: flat
+ * tint, matching the tray's own SDK-gated blur pattern) plus a mini
+ * thumbnail matrix. User-directed against the real tvOS photo reference
+ * (`design/IMG_1858.jpeg`): always a fixed [FolderTileGridColumns]×3 grid —
+ * apps fill left to right, top to bottom, and a folder with fewer than
+ * [FolderTileMaxThumbnails] (9 = 3×3) apps just leaves the remaining grid
+ * slots empty rather than the grid shrinking to fit however many there are.
+ * Each mini thumbnail keeps [TileAspectRatio] (16:9), the same as every
+ * other tile in this app, rather than being cropped to a square.
+ */
 val FolderTileMatrixSpacing = 4.dp
-const val FolderTileMaxThumbnails = 4
+const val FolderTileMaxThumbnails = 9
+const val FolderTileGridColumns = 3
 val FolderTitleSpacing = 8.dp
 
 /** §5 open folder — sub-grid modal sizing; same tile metrics as the root grid, just presented inside a centered, dimmed-backdrop panel. */

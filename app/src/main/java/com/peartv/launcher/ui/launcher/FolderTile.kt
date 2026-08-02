@@ -145,8 +145,14 @@ fun FolderTile(
             contentAlignment = Alignment.Center,
         ) {
             val thumbnails = folder.apps.take(FolderTileMaxThumbnails)
+            // Always a fixed 3-wide grid (user-directed, against the tvOS
+            // photo reference `design/IMG_1858.jpeg`) — apps fill left to
+            // right, top to bottom (`LazyVerticalGrid`'s own natural item
+            // order already does this); a folder with fewer than 9 apps
+            // just leaves the remaining slots empty rather than the grid
+            // itself shrinking to fit.
             LazyVerticalGrid(
-                columns = GridCells.Fixed(2),
+                columns = GridCells.Fixed(FolderTileGridColumns),
                 horizontalArrangement = Arrangement.spacedBy(FolderTileMatrixSpacing),
                 verticalArrangement = Arrangement.spacedBy(FolderTileMatrixSpacing),
                 userScrollEnabled = false,
@@ -155,7 +161,7 @@ fun FolderTile(
                     .padding(FolderTileMatrixSpacing * 2),
             ) {
                 items(thumbnails, key = { it.packageName }) { app ->
-                    FolderThumbnail(app, Modifier.aspectRatio(1f))
+                    FolderThumbnail(app, Modifier.aspectRatio(TileAspectRatio))
                 }
             }
         }

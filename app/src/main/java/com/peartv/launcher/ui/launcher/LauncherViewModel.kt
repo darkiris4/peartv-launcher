@@ -42,6 +42,14 @@ data class EditModeState(
     val activeId: String? = null,
 )
 
+/** Grid Reordering & Folders §8 (drag-to-merge) — a held direction that landed on a mergeable neighbor, awaiting the user's confirm/cancel before [LauncherViewModel.confirmMerge] actually touches the layout. Identifies both apps by [targetPackageName]/[activeId], not by direction/position — captured before any swap the same held press triggers, so the two may no longer be spatially adjacent by confirm time (see [LauncherViewModel.moveActive]'s own doc). [activeLabel]/[targetLabel] are pre-resolved display names, not re-looked-up at render time, so `LauncherScreen`'s confirmation prompt doesn't need its own `TvApp` lookup path. */
+data class PendingMerge(
+    val activeId: String,
+    val targetPackageName: String,
+    val activeLabel: String,
+    val targetLabel: String,
+)
+
 /** The small anchored "liquid glass" popover a long-press opens on whatever tile currently has focus — Edit Home Screen / Move to… / Delete App. */
 data class OptionsMenuState(val targetId: String)
 
@@ -206,8 +214,15 @@ class LauncherViewModel(
             if (id == null) null else items.filterIsInstance<LauncherGridItem.FolderItem>().find { it.id == id }
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
 
+    /** Whether the currently-open folder ([openFolder]) should land on its own rename field rather than its first app tile — set per-[openFolder] call, not derived from [editMode] after the fact, since a successful merge already exits Edit Mode (see [confirmMerge]) before this is read. */
+    private val _openFolderRenameMode = MutableStateFlow(false)
+    val openFolderRenameMode: StateFlow<Boolean> = _openFolderRenameMode.asStateFlow()
+
     private val _optionsMenu = MutableStateFlow<OptionsMenuState?>(null)
     val optionsMenu: StateFlow<OptionsMenuState?> = _optionsMenu.asStateFlow()
+
+    private val _pendingMerge = MutableStateFlow<PendingMerge?>(null)
+    val pendingMerge: StateFlow<PendingMerge?> = _pendingMerge.asStateFlow()
 
     fun onAppFocused(app: TvApp) {
         _focusedApp.value = app
@@ -260,20 +275,91 @@ class LauncherViewModel(
         val id = _optionsMenu.value?.targetId ?: return
         closeOptionsMenu()
         _editMode.value = EditModeState(isActive = true, activeId = id)
+        pendingMergeCandidate = null
     }
 
     fun exitEditMode() {
         _editMode.value = EditModeState()
+        pendingMergeCandidate = null
     }
+
+    /**
+     * [pendingMergeCandidate] is captured *before* the swap below runs, on
+     * every press — not just once a hold is detected — specifically so a
+     * following hold-repeat merges with whichever neighbor was actually
+     * adjacent when the press started. Confirmed on-device this ordering
+     * matters: capturing it only after a hold was already detected found
+     * whatever [move]'s own first-press swap had *just* made adjacent
+     * instead — one cell further along than the neighbor the user was
+     * actually aiming at, skipping the intended target entirely. See
+     * [GridLayoutEngine.mergeTarget]'s own doc for the full reasoning.
+     */
+    private var pendingMergeCandidate: String? = null
 
     fun moveActive(direction: DpadDirection, columnCount: Int) {
         val activeId = _editMode.value.activeId ?: return
+        val before = layout.value
+        pendingMergeCandidate = GridLayoutEngine.mergeTarget(before, activeId, direction, columnCount)?.packageName
         viewModelScope.launch {
-            val before = layout.value
             val after = GridLayoutEngine.move(before, activeId, direction, columnCount)
             if (after == before) return@launch
             layoutRepository.setLayout(after)
         }
+    }
+
+    /**
+     * The held-direction half of Grid Reordering §8 (drag-to-merge) —
+     * [LauncherScreen]'s key handling calls this instead of [moveActive]
+     * once a direction press starts auto-repeating, rather than continuing
+     * to swap through neighbor after neighbor. Reads [pendingMergeCandidate]
+     * ([moveActive] already captured it, before its own swap ran) rather
+     * than re-deriving a target from the tile's *current* position — see
+     * that property's own doc for why. Unlike an ordinary move, this
+     * doesn't touch [layout] itself yet — it only populates [pendingMerge]
+     * so [LauncherScreen] can show a confirmation prompt first (user-
+     * directed: an accidental hold shouldn't silently fold two apps
+     * together with no way back). [confirmMerge]/[cancelMerge] resolve it.
+     * No candidate at all (a folder, the grid edge, or the active tile is
+     * currently in the dock, where merging is never offered) simply leaves
+     * [pendingMerge] `null`, so a hold that doesn't land on anything
+     * mergeable does nothing rather than something surprising.
+     */
+    fun requestMerge() {
+        val activeId = _editMode.value.activeId ?: return
+        val targetPackageName = pendingMergeCandidate ?: return
+        val activeLabel = appsByPackage.value[activeId]?.label ?: return
+        val targetLabel = appsByPackage.value[targetPackageName]?.label ?: return
+        _pendingMerge.value = PendingMerge(activeId, targetPackageName, activeLabel, targetLabel)
+    }
+
+    /**
+     * Confirms a pending merge — same folder-naming/ID convention as
+     * [optionsNewFolder] (a category-derived name, a fresh UUID), no menu
+     * step, but otherwise the identical kind of folder. Exits Edit Mode (the
+     * active tile no longer independently exists — it's inside the new
+     * folder now, exactly as a real tvOS drag-drop ends the moment it lands
+     * on another icon) and opens the new folder straight into its own
+     * rename field (user-directed) — [openFolder]'s `enterRenameMode`, not a
+     * universal "always focus the title" default; see that function's doc
+     * for why an *ordinary* folder open shouldn't do the same.
+     */
+    fun confirmMerge() {
+        val pending = _pendingMerge.value ?: return
+        _pendingMerge.value = null
+        viewModelScope.launch {
+            val current = layout.value
+            val name = appsByPackage.value[pending.targetPackageName]?.category ?: DefaultFolderName
+            val folderId = UUID.randomUUID().toString()
+            val after = GridLayoutEngine.mergeById(current, pending.activeId, pending.targetPackageName, folderId, name) ?: return@launch
+            layoutRepository.setLayout(after)
+            exitEditMode()
+            openFolder(folderId, enterRenameMode = true)
+        }
+    }
+
+    /** Dismisses the confirmation prompt without changing [layout] — Edit Mode is untouched, so the user lands right back where the hold started, active tile still picked up. */
+    fun cancelMerge() {
+        _pendingMerge.value = null
     }
 
     // --- "Move to…" (the popover's own submenu) + "Delete App" ---
@@ -290,7 +376,7 @@ class LauncherViewModel(
             val updated = (current.filterNot { it.stableId() == targetId } + folder).renumbered()
             layoutRepository.setLayout(updated)
             closeOptionsMenu()
-            openFolder(folderId)
+            openFolder(folderId, enterRenameMode = true)
         }
     }
 
@@ -330,12 +416,14 @@ class LauncherViewModel(
 
     // --- §5/§6: folder modal, renaming, ejection ---
 
-    fun openFolder(folderId: String) {
+    fun openFolder(folderId: String, enterRenameMode: Boolean = false) {
         _openFolderId.value = folderId
+        _openFolderRenameMode.value = enterRenameMode
     }
 
     fun closeFolder() {
         _openFolderId.value = null
+        _openFolderRenameMode.value = false
     }
 
     fun renameFolder(folderId: String, newName: String) {

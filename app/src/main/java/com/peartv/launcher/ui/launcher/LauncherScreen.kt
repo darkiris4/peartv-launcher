@@ -97,11 +97,14 @@ fun LauncherScreen(
     val dockItems by viewModel.dockItems.collectAsStateWithLifecycle()
     val gridItems by viewModel.gridItems.collectAsStateWithLifecycle()
     val focusedApp by viewModel.focusedApp.collectAsStateWithLifecycle()
+    val focusedItemId by viewModel.focusedItemId.collectAsStateWithLifecycle()
     val heroBackdrop by viewModel.heroBackdrop.collectAsStateWithLifecycle()
     val tier3Channels by viewModel.tier3Channels.collectAsStateWithLifecycle()
     val editMode by viewModel.editMode.collectAsStateWithLifecycle()
     val openFolder by viewModel.openFolder.collectAsStateWithLifecycle()
+    val openFolderRenameMode by viewModel.openFolderRenameMode.collectAsStateWithLifecycle()
     val optionsMenu by viewModel.optionsMenu.collectAsStateWithLifecycle()
+    val pendingMerge by viewModel.pendingMerge.collectAsStateWithLifecycle()
     val hasDismissedChannelsPrompt by viewModel.hasDismissedChannelsPrompt.collectAsStateWithLifecycle()
     val gridFolders = remember(gridItems) { gridItems.filterIsInstance<LauncherGridItem.FolderItem>() }
 
@@ -124,6 +127,20 @@ fun LauncherScreen(
     // `ContentRows`).
     val carouselFocusRequester = remember { FocusRequester() }
 
+    // Dock/grid column-aligned focus routing (user-reported: DPAD_UP from
+    // the grid always landed on the dock's rightmost tile, not the column
+    // actually above focus) — same "geometric search is unreliable" remedy
+    // as `carouselFocusRequester` above, just at a different boundary. Both
+    // lists are owned here, not by `TopShelfRow`/`AppGrid` individually,
+    // since each composable needs the *other's* instances to point its own
+    // `up`/`down` at (see each composable's own doc). `rowZeroCount` guards
+    // against ever creating a `FocusRequester` that no tile will actually
+    // attach to — a grid with fewer items than columns has empty slots in
+    // its own row 0, and a `focusProperties` target that's never composed
+    // throws when focus search actually tries to reach it.
+    val dockApps = remember(dockItems) { dockItems.filterIsInstance<LauncherGridItem.AppItem>().map { it.app } }
+    val dockFocusRequesters = remember(dockApps.size) { List(dockApps.size) { FocusRequester() } }
+
     // Options popover anchoring — real window (absolute screen) pixel
     // coordinates, which is exactly the coordinate space `Popup`'s own
     // `PopupPositionProvider` operates in (`OptionsMenu.kt`'s
@@ -137,10 +154,20 @@ fun LauncherScreen(
     }
 
     val dockPackageNames = remember(dockItems) { dockItems.map { it.id }.toSet() }
+    // Keyed on `focusedItemId`, not `focusedApp` — user-reported bug fix:
+    // `onFolderFocused` (unlike `onAppFocused`) never touches `focusedApp`,
+    // since a folder has no single `TvApp` to give the hero, so it kept
+    // whatever app was last genuinely focused. Landing on a folder in the
+    // grid after leaving the dock left that stale value pointing at a dock
+    // app, which this check read as "still in the dock" and never
+    // collapsed the hero — confirmed on-device this only ever happened
+    // dock→folder, never dock→app, since `onAppFocused` always overwrites
+    // it correctly. `focusedItemId` (`LauncherViewModel`'s own doc: "App or
+    // Folder alike") updates for both, so it's the one this needs.
     // Defaults to expanded (true) before the first focus event lands on cold
     // launch — TopShelfRow's own FocusRequester fires almost immediately, so
     // this is only ever the state for a single initial frame.
-    val isTopShelfFocused = focusedApp == null || focusedApp?.packageName in dockPackageNames
+    val isTopShelfFocused = focusedItemId == null || focusedItemId in dockPackageNames
 
     val expansionProgress by animateFloatAsState(
         targetValue = if (isTopShelfFocused) 1f else 0f,
@@ -174,6 +201,11 @@ fun LauncherScreen(
     ) {
         BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
             val columnCount = columnCount(maxWidth)
+            // Only ever as many as the grid's own row 0 actually has tiles
+            // for (see the `dockFocusRequesters` doc above) — a grid with
+            // fewer items than columns can't fill a whole row 0.
+            val rowZeroCount = minOf(columnCount, gridItems.size)
+            val gridRowZeroFocusRequesters = remember(rowZeroCount) { List(rowZeroCount) { FocusRequester() } }
             val expandedHeroHeight = maxHeight - HeroGridPeekHeight
             val heroHeight = TopShelfTrayHeight + (expandedHeroHeight - TopShelfTrayHeight) * expansionProgress
 
@@ -187,16 +219,36 @@ fun LauncherScreen(
                         directionFromKey(event.key)?.let { lastDpadDirection = it }
                     }
                     // Edit Mode's direction-key interception must yield the
-                    // instant an overlay (the popover or a folder) is on top
-                    // — confirmed on-device that leaving this on
-                    // unconditionally (whenever `editMode.isActive`) hijacked
-                    // every arrow press for repositioning the *background*
-                    // tile instead of letting the popover's own rows navigate.
-                    val editModeOwnsDirectionKeys = editMode.isActive && optionsMenu == null && openFolder == null
+                    // instant an overlay (the popover, a folder, or the
+                    // merge-confirm prompt) is on top — confirmed on-device
+                    // that leaving this on unconditionally (whenever
+                    // `editMode.isActive`) hijacked every arrow press for
+                    // repositioning the *background* tile instead of letting
+                    // the overlay's own rows/buttons navigate.
+                    val editModeOwnsDirectionKeys = editMode.isActive && optionsMenu == null && openFolder == null && pendingMerge == null
                     when {
                         editModeOwnsDirectionKeys && directionFromKey(event.key) != null -> {
                             if (event.type == KeyEventType.KeyDown) {
-                                directionFromKey(event.key)?.let { viewModel.moveActive(it, columnCount) }
+                                directionFromKey(event.key)?.let { direction ->
+                                    // Grid Reordering §8 (drag-to-merge) — a
+                                    // tap (repeatCount 0, the OS's own signal
+                                    // for "not held yet") always repositions,
+                                    // exactly as before; only once the OS
+                                    // starts auto-repeating the same held key
+                                    // does continuing to aim at whatever's now
+                                    // adjacent raise the merge-confirm prompt
+                                    // instead of swapping through it — see
+                                    // `LauncherViewModel.requestMerge`'s own
+                                    // doc for why this split exists (a D-pad
+                                    // press has no continuous hover state to
+                                    // hang tvOS's own hold-to-merge gesture
+                                    // on the way a touch-drag does).
+                                    if (event.nativeKeyEvent.repeatCount == 0) {
+                                        viewModel.moveActive(direction, columnCount)
+                                    } else {
+                                        viewModel.requestMerge()
+                                    }
+                                }
                             }
                             true
                         }
@@ -264,7 +316,7 @@ fun LauncherScreen(
                     }
                     if (dockItems.isNotEmpty()) {
                         TopShelfRow(
-                            apps = dockItems.filterIsInstance<LauncherGridItem.AppItem>().map { it.app },
+                            apps = dockApps,
                             onAppClick = viewModel::onAppClick,
                             blurSource = heroBackdropLayer,
                             // User-directed: Up from a dock tile should always
@@ -272,6 +324,8 @@ fun LauncherScreen(
                             // one, straight to Settings otherwise (there's no
                             // "top shelf content" to stop at for a Tier 1/2 app).
                             upFocusRequester = if (primaryChannel != null) carouselFocusRequester else settingsFocusRequester,
+                            focusRequesters = dockFocusRequesters,
+                            downFocusRequesters = gridRowZeroFocusRequesters,
                             onAppFocused = viewModel::onAppFocused,
                             editMode = editMode,
                             optionsMenuTargetId = optionsMenu?.targetId,
@@ -292,12 +346,15 @@ fun LauncherScreen(
                         optionsMenuTargetId = optionsMenu?.targetId,
                         onOpenOptionsMenu = viewModel::openOptionsMenu,
                         onTilePositioned = onTilePositioned,
+                        columnCount = columnCount,
+                        upFocusRequesters = dockFocusRequesters,
+                        rowZeroFocusRequesters = gridRowZeroFocusRequesters,
                         modifier = Modifier.weight(AppGridWeight),
                     )
                 }
             }
 
-            if (editMode.isActive) {
+            if (editMode.isActive && pendingMerge == null) {
                 EditModeHint(
                     modifier = Modifier
                         .align(Alignment.TopCenter)
@@ -309,6 +366,7 @@ fun LauncherScreen(
             if (openFolderValue != null) {
                 FolderScreen(
                     folder = openFolderValue,
+                    enterRenameMode = openFolderRenameMode,
                     onRename = { viewModel.renameFolder(openFolderValue.id, it) },
                     onAppClick = viewModel::onAppClick,
                     onAppFocused = viewModel::onAppFocused,
@@ -316,6 +374,16 @@ fun LauncherScreen(
                     onOpenOptionsMenu = viewModel::openOptionsMenu,
                     onTilePositioned = onTilePositioned,
                     modifier = Modifier.fillMaxSize(),
+                )
+            }
+
+            val pendingMergeValue = pendingMerge
+            if (pendingMergeValue != null) {
+                MergeConfirmPrompt(
+                    activeLabel = pendingMergeValue.activeLabel,
+                    targetLabel = pendingMergeValue.targetLabel,
+                    onConfirm = viewModel::confirmMerge,
+                    onCancel = viewModel::cancelMerge,
                 )
             }
 

@@ -67,6 +67,21 @@ import com.peartv.launcher.domain.model.TvApp
  * focused app — the carousel's own when it has one, straight to the settings
  * gear otherwise (user-directed: Up should always reach *something*).
  *
+ * [focusRequesters]/[downFocusRequesters] fix the same class of bug at the
+ * dock/grid boundary (user-reported: `DPAD_UP` from the grid always landed
+ * on the dock's rightmost tile instead of the column actually above focus —
+ * default geometric search across two separately-laid-out composables
+ * again wasn't reliable). [focusRequesters] is one `FocusRequester` per
+ * tile, owned and created by `LauncherScreen` rather than here, since
+ * `AppGrid`'s own row-0 tiles need those exact same instances to point their
+ * `up` back at this row — `TopShelfRow` can't hand out references to a list
+ * it created itself for a sibling composable to consume before this one has
+ * even composed. [downFocusRequesters], indexed the same way, is this row's
+ * own half of the fix — each tile's explicit `down` target, one per grid
+ * column, so descending back into the grid lands column-aligned too, not
+ * just ascending out of it. Index 0 keeps doubling as the row's initial
+ * cold-launch focus target, same as it always has.
+ *
  * Grid Reordering & Folders — [apps] threads edit-mode visuals/long-press
  * through same as `AppGrid`; the dock is App-only (Decisions Log "Folders
  * excluded from the dock"), so nothing here ever needs folder-specific
@@ -79,13 +94,14 @@ fun TopShelfRow(
     blurSource: GraphicsLayer,
     modifier: Modifier = Modifier,
     upFocusRequester: FocusRequester? = null,
+    focusRequesters: List<FocusRequester> = emptyList(),
+    downFocusRequesters: List<FocusRequester> = emptyList(),
     onAppFocused: (TvApp) -> Unit = {},
     editMode: EditModeState = EditModeState(),
     optionsMenuTargetId: String? = null,
     onOpenOptionsMenu: () -> Unit = {},
     onTilePositioned: (LayoutCoordinates) -> Unit = {},
 ) {
-    val firstItemFocusRequester = remember { FocusRequester() }
     val shape = RoundedCornerShape(TrayCornerRadius)
     // This tray's own position relative to the shared hero `Box` it and
     // `HeroBanner` are both direct children of — `positionInParent()`
@@ -115,6 +131,8 @@ fun TopShelfRow(
             val isActiveDrag = editMode.isActive && editMode.activeId == app.packageName
             val isDimmed = editMode.isActive && !isActiveDrag
             val isOptionsMenuTarget = optionsMenuTargetId == app.packageName
+            val ownFocusRequester = focusRequesters.getOrNull(index)
+            val downTarget = downFocusRequesters.getOrNull(index.coerceAtMost(downFocusRequesters.size - 1))
             AppTile(
                 app = app,
                 onClick = { if (!editMode.isActive) onAppClick(app) },
@@ -137,20 +155,17 @@ fun TopShelfRow(
                     .width(TileWidth)
                     .aspectRatio(TileAspectRatio)
                     .then(
-                        if (index == 0) Modifier.focusRequester(firstItemFocusRequester) else Modifier,
+                        if (ownFocusRequester != null) Modifier.focusRequester(ownFocusRequester) else Modifier,
                     )
-                    .then(
-                        if (upFocusRequester != null) {
-                            Modifier.focusProperties { up = upFocusRequester }
-                        } else {
-                            Modifier
-                        },
-                    ),
+                    .focusProperties {
+                        if (upFocusRequester != null) up = upFocusRequester
+                        if (downTarget != null) down = downTarget
+                    },
             )
         }
     }
 
     LaunchedEffect(Unit) {
-        firstItemFocusRequester.requestFocus()
+        focusRequesters.getOrNull(0)?.requestFocus()
     }
 }

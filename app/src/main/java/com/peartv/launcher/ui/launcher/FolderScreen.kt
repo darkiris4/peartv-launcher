@@ -13,7 +13,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.runtime.Composable
@@ -49,13 +49,21 @@ import com.peartv.launcher.domain.model.TvApp
  * API 30 reference hardware regardless — same call as `FolderTile`'s own
  * scope note).
  *
- * The title is the modal's first (and only initially reachable) focus
- * target — "immediately focus the inline text field" (Decision #5's Tier 3
- * fallback-name case) is approximated as "the title already has D-pad focus
- * one Select-press away," rather than auto-invoking the system IME from a
- * non-gesture code path, which is fragile on real Android TV devices and not
- * something this session can iterate on without a live device in front of
- * it. Pressing Down moves focus from the title into the sub-grid.
+ * [enterRenameMode] decides which of two focus targets this modal opens on
+ * — user-directed: renaming should only ever be where a user lands
+ * *because* they were mid-edit (freshly created a folder via the Options
+ * popover's "+ New Folder," or just merged two tiles together in Edit Mode
+ * — `LauncherViewModel.openFolder`'s own `enterRenameMode` argument, set
+ * per call site, not inferred from Edit Mode's own state after the fact).
+ * An *ordinary* open — clicking an existing folder to browse/launch what's
+ * inside it — focuses the first app tile instead; landing an everyday
+ * folder-open in a text-edit field read as a mistake, not a feature.
+ * "Immediately focus the inline text field" (Decision #5's Tier 3
+ * fallback-name case) is still approximated as "the title already has
+ * D-pad focus one Select-press away" when [enterRenameMode] is true, rather
+ * than auto-invoking the system IME from a non-gesture code path, which is
+ * fragile on real Android TV devices. Pressing Down from the title moves
+ * focus into the sub-grid either way.
  *
  * A long-press on any tile here opens the same Options popover as the root
  * grid ([onOpenOptionsMenu]/[optionsMenuTargetId]/[onTilePositioned] mirror
@@ -67,6 +75,7 @@ import com.peartv.launcher.domain.model.TvApp
 @Composable
 fun FolderScreen(
     folder: LauncherGridItem.FolderItem,
+    enterRenameMode: Boolean,
     onRename: (String) -> Unit,
     onAppClick: (TvApp) -> Unit,
     onAppFocused: (TvApp) -> Unit,
@@ -77,6 +86,7 @@ fun FolderScreen(
 ) {
     val focusManager = LocalFocusManager.current
     val titleFocusRequester = remember { FocusRequester() }
+    val firstTileFocusRequester = remember { FocusRequester() }
     var titleInput by remember(folder.id) { mutableStateOf(folder.name) }
 
     // Plain opaque background, not a translucent scrim — the underlying grid
@@ -137,7 +147,7 @@ fun FolderScreen(
                 contentPadding = PaddingValues(top = FolderGridTopPadding, bottom = FolderGridTopPadding),
                 modifier = Modifier.fillMaxSize(),
             ) {
-                items(folder.apps, key = { it.packageName }) { app ->
+                itemsIndexed(folder.apps, key = { _, app -> app.packageName }) { index, app ->
                     val isOptionsMenuTarget = optionsMenuTargetId == app.packageName
                     AppTile(
                         app = app,
@@ -146,14 +156,21 @@ fun FolderScreen(
                         onLongPress = onOpenOptionsMenu,
                         isOptionsMenuTarget = isOptionsMenuTarget,
                         onPositioned = if (isOptionsMenuTarget) onTilePositioned else ({}),
-                        modifier = Modifier.width(TileWidth).aspectRatio(TileAspectRatio),
+                        modifier = Modifier
+                            .width(TileWidth)
+                            .aspectRatio(TileAspectRatio)
+                            .then(if (index == 0) Modifier.focusRequester(firstTileFocusRequester) else Modifier),
                     )
                 }
             }
         }
     }
 
-    LaunchedEffect(folder.id) {
-        titleFocusRequester.requestFocus()
+    LaunchedEffect(folder.id, enterRenameMode) {
+        if (enterRenameMode) {
+            titleFocusRequester.requestFocus()
+        } else {
+            firstTileFocusRequester.requestFocus()
+        }
     }
 }

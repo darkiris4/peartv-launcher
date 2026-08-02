@@ -19,7 +19,7 @@ import androidx.tv.material3.Text
 @Composable
 fun EditModeHint(modifier: Modifier = Modifier) {
     Text(
-        text = "Arrows to move  •  Back to finish",
+        text = "Arrows to move  •  Hold to merge into a folder  •  Back to finish",
         style = MaterialTheme.typography.labelMedium,
         color = MaterialTheme.colorScheme.onSurface,
         modifier = modifier
