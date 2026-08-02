@@ -1,5 +1,8 @@
 package com.peartv.launcher.ui.settings
 
+import android.content.Context
+import android.content.Intent
+import android.provider.Settings as AndroidSettings
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -38,11 +41,23 @@ import androidx.tv.material3.Text
 import com.peartv.launcher.ui.launcher.openAppInfoSettings
 
 /**
- * PRODUCT_SPEC.md §4's narrowly-scoped settings surface — exactly three
- * things (theme toggle, TMDB API key, Home Screen Channels permission CTA),
- * nothing more. Not styled to the same tvOS-grade motion standard as the
+ * PRODUCT_SPEC.md §4's narrowly-scoped settings surface — theme toggle,
+ * TMDB API key, Home Screen Channels permission CTA, and a screensaver CTA
+ * (§5 #11). Not styled to the same tvOS-grade motion standard as the
  * launcher grid (§1) — this is a utility form, not part of the focus/motion
  * system that spec is about.
+ *
+ * Idle-state screensaver (§5 #11) — deliberately *not* a bundled/custom
+ * ambient-video mechanism this app owns and plays itself: Android TV's own
+ * Daydream system already covers exactly this (idle timeout, playback,
+ * wake-on-input), and reimplementing it here would just be a worse copy of
+ * something the OS already does well, with real video-asset licensing risk
+ * on top (Apple's own aerial screensaver clips are copyrighted and not
+ * licensed for third-party redistribution — considered and rejected).
+ * User-directed: point at "Aerial Views" (a free, open-source Daydream
+ * service already built for exactly this on Android TV) via a plain deep
+ * link to the system's own screensaver settings, rather than this launcher
+ * detecting/installing/launching anything itself.
  *
  * No `TextField` in `androidx.tv.material3` (checked directly against the
  * 1.0.0 artifact, not assumed) — `BasicTextField` from Compose Foundation
@@ -151,6 +166,17 @@ fun SettingsScreen(
             Text("Open app settings")
         }
 
+        Spacer(modifier = Modifier.height(32.dp))
+
+        Text(
+            text = "For an aerial screensaver like tvOS, install the free \"Aerial Views\" app, then choose it here.",
+            color = MaterialTheme.colorScheme.onBackground,
+        )
+        Spacer(modifier = Modifier.height(8.dp))
+        Button(onClick = { openScreensaverSettings(context) }) {
+            Text("Open Screensaver Settings")
+        }
+
         Spacer(modifier = Modifier.weight(1f))
         Button(onClick = onBack) {
             Text("Back")
@@ -160,4 +186,9 @@ fun SettingsScreen(
     LaunchedEffect(Unit) {
         themeFocusRequester.requestFocus()
     }
+}
+
+/** Android TV's own Daydream/screensaver settings page — where a Daydream service like Aerial Views gets selected and configured, not something this app has any reason to duplicate. */
+private fun openScreensaverSettings(context: Context) {
+    context.startActivity(Intent(AndroidSettings.ACTION_DREAM_SETTINGS))
 }
