@@ -6,6 +6,7 @@ import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
 import android.content.pm.ResolveInfo
 import android.util.Log
+import com.peartv.launcher.data.image.dominantColorArgb
 import com.peartv.launcher.data.image.toHardwareBitmap
 import com.peartv.launcher.domain.model.TvApp
 import com.peartv.launcher.domain.repository.AppEnrichmentRepository
@@ -65,6 +66,13 @@ class LauncherAppRepositoryImpl(
             val bannerDrawable = activityInfo.loadBanner(packageManager)
                 ?: activityInfo.applicationInfo.loadBanner(packageManager)
                 ?: loadIcon(packageManager)
+            // Regular launcher icon, loaded independently of the banner
+            // fallback chain above — TvApp's own doc explains why the Tier 2
+            // hero fallback (HeroBanner.kt) needs this as a second, separate
+            // asset rather than reusing whatever the banner chain resolved
+            // to (a small, legible-by-design mark, not full-bleed art).
+            val iconDrawable = activityInfo.loadIcon(packageManager)
+                ?: activityInfo.applicationInfo.loadIcon(packageManager)
             val enrichment = appEnrichmentRepository.forPackage(activityInfo.packageName)
 
             TvApp(
@@ -74,6 +82,16 @@ class LauncherAppRepositoryImpl(
                 banner = runCatching { bannerDrawable?.toHardwareBitmap() }
                     .getOrElse {
                         Log.w(TAG, "Failed to decode banner for ${activityInfo.packageName}", it)
+                        null
+                    },
+                icon = runCatching { iconDrawable?.toHardwareBitmap() }
+                    .getOrElse {
+                        Log.w(TAG, "Failed to decode icon for ${activityInfo.packageName}", it)
+                        null
+                    },
+                iconPrimaryColorArgb = runCatching { iconDrawable?.dominantColorArgb() }
+                    .getOrElse {
+                        Log.w(TAG, "Failed to sample icon color for ${activityInfo.packageName}", it)
                         null
                     },
                 accentColorArgb = enrichment?.accentColorArgb,

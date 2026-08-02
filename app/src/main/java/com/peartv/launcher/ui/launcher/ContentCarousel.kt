@@ -33,7 +33,6 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
@@ -247,15 +246,42 @@ fun ContentCarousel(
             }
         }
 
+        // Shared bottom/left vignette tuning (Vignette.kt) — same feathered,
+        // bounded, theme-aware fade HeroBanner.kt's Tier 1/2 hero uses, not
+        // a separately-tuned one. This carousel had its own plain 2-stop,
+        // unbounded fade (fully transparent at the very top down to fully
+        // opaque at the very bottom; similarly unbounded left-to-right)
+        // until user-directed unification — same hard-edge and
+        // fades-through-black artifacts featheredEdgeStops' own doc
+        // describes, just never caught here independently since this
+        // carousel is usually covered in real photographic art busy enough
+        // to mask it, unlike Tier 2's flat sampled-color fill.
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(Brush.verticalGradient(listOf(Color.Transparent, backgroundColor))),
+                .background(
+                    Brush.verticalGradient(
+                        colorStops = featheredEdgeStops(
+                            color = backgroundColor,
+                            start = 1f - VignetteBottomFraction,
+                            end = 1f,
+                        ),
+                    ),
+                ),
         )
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(Brush.horizontalGradient(listOf(backgroundColor.copy(alpha = 0.5f), Color.Transparent))),
+                .background(
+                    Brush.horizontalGradient(
+                        colorStops = featheredEdgeStops(
+                            color = backgroundColor,
+                            start = 0f,
+                            end = VignetteLeftFraction,
+                            reversed = true,
+                        ),
+                    ),
+                ),
         )
 
         ProgramMetadata(

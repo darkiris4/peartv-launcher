@@ -96,6 +96,17 @@ fun Modifier.recordBackdropSource(layer: GraphicsLayer): Modifier = drawWithCont
  * was itself just read as another layer's source, several times over, in
  * the same frame). This single-pass version is the last one confirmed
  * stable on-device — see the Decisions Log entry for what was tried.
+ *
+ * **Only call this from a composable that is *not* itself nested inside
+ * another [Modifier.recordBackdropSource] capture that's still open at draw
+ * time.** `HeroBanner.kt`'s Tier 2 fallback tried exactly that — recording
+ * and consuming a second, inner layer while already nested inside this
+ * composable's own outer `recordBackdropSource(backdropSourceLayer)` — and
+ * got a silently empty layer back, not a crash, but the same underlying
+ * chained-`GraphicsLayer` hazard as the multi-pass attempt above. Every
+ * current call site (`TopShelfRow`, `StatusBar`, `ContentCarousel`'s
+ * `PortraitPosterBackdrop`) is a true sibling of whatever recorded `source`,
+ * not a descendant of it — keep it that way.
  */
 fun Modifier.blurredBackdrop(
     source: GraphicsLayer,

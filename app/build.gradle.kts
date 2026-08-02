@@ -101,6 +101,11 @@ dependencies {
     // narrowly-scoped settings screen.
     implementation(libs.androidx.datastore.preferences)
 
+    // Tier 2 hero fallback (§3.1.2 Template 4) — samples an app icon's
+    // dominant color at app-list build time for a flat solid-color backdrop,
+    // replacing an abandoned live-blur attempt (see LauncherAppRepositoryImpl).
+    implementation(libs.androidx.palette)
+
     // Tier 3 full-screen carousel trailer playback (COLUMN_PREVIEW_VIDEO_URI)
     // — media3-exoplayer-hls since streaming apps' trailer URIs are plausibly
     // HLS manifests, not just progressive mp4; media3-ui for PlayerView,

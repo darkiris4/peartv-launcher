@@ -10,6 +10,28 @@ import android.graphics.Bitmap
  * is never more than a GPU blit, even on the first focus of a cold-launched
  * screen.
  *
+ * [icon] is a *separate* image from [banner] — most apps declare both: the
+ * wide 16:9 [banner] for TV surfaces, and a small square everyday launcher
+ * icon, built to stay legible at small sizes (unlike [banner], which is
+ * full-bleed art not designed to be shrunk). §3.1.2 Template 4's Tier 2
+ * hero fallback (`HeroBanner.kt`) uses [icon] as its centered mark over a
+ * flat, [iconPrimaryColorArgb]-filled backdrop for exactly that reason — a
+ * reverted earlier attempt tried reusing [banner] itself, shrunk, as a
+ * stand-in logo, and it read poorly. When an app declares no [banner] at
+ * all, [LauncherAppRepository] already falls [banner] back to this same
+ * icon — the two fields are simply equal in that case, which still renders
+ * correctly.
+ *
+ * [iconPrimaryColorArgb] is [icon]'s dominant color (`DrawableBitmap.kt`'s
+ * `dominantColorArgb`, via Android's `Palette` library), sampled once at
+ * app-list build time. `null` when `Palette` couldn't extract one (rare —
+ * e.g. a fully transparent icon) — callers fall back to a neutral theme
+ * color in that case. A live blur of [banner] was tried first for this same
+ * backdrop and abandoned (see `dominantColorArgb`'s own doc for why); a
+ * flat sampled-color fill is also a closer match to how [AppTile] already
+ * treats its own fallback tiles elsewhere in this app (a solid
+ * [accentColorArgb] fill, not a photographic background).
+ *
  * [accentColorArgb], [pinnedToTopShelf], and [tmdbProviderId] are enrichment
  * fields (§3.2.1) — all default to "no enrichment data available" rather
  * than requiring every installed app to have a curated entry.
@@ -19,6 +41,8 @@ data class TvApp(
     val activityName: String,
     val label: String,
     val banner: Bitmap?,
+    val icon: Bitmap? = null,
+    val iconPrimaryColorArgb: Int? = null,
     val accentColorArgb: Int? = null,
     val pinnedToTopShelf: Boolean = false,
     val tmdbProviderId: Int? = null,
