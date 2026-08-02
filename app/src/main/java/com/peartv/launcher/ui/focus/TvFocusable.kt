@@ -21,11 +21,16 @@ import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import com.peartv.launcher.ui.motion.LocalReduceMotion
 import com.peartv.launcher.ui.motion.TvSprings
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
-private const val MaxTiltDegrees = 6f
+// User-directed: the original 6f was confirmed imperceptible on the actual
+// reference TV at normal viewing distance (a temporary 35f diagnostic build
+// confirmed the mechanism itself was working, just too subtle to notice).
+// Split the difference — noticeable, not dramatic.
+private const val MaxTiltDegrees = 14f
 private const val PressHoldMillis = 80L
 private const val MaxShadowElevationPx = 48f
 
@@ -101,6 +106,11 @@ fun Modifier.tvOSFocusable(
     var longPressFired by remember { mutableStateOf(false) }
     val lastDirection = LocalLastDpadDirection.current
     val shape = remember(cornerRadius) { RoundedCornerShape(cornerRadius) }
+    // PRODUCT_SPEC.md §5 #7 — Apple's HIG requires depth/parallax/animated-
+    // blur effects to be disabled when the platform's reduced-motion signal
+    // is on. Read once at app startup (ReduceMotion.kt's own doc), not
+    // observed live.
+    val reduceMotion = LocalReduceMotion.current
 
     val scale = remember { Animatable(1f) }
     val tiltX = remember { Animatable(0f) }
@@ -113,6 +123,14 @@ fun Modifier.tvOSFocusable(
             isFocused -> focusedScale
             else -> 1f
         }
+        if (reduceMotion) {
+            // Snap, not spring — focus still needs *some* visible feedback
+            // to stay usable, just without the bounce reduced motion exists
+            // to suppress.
+            scale.snapTo(targetScale)
+            elevation.snapTo(if (isFocused) 1f else 0f)
+            return@LaunchedEffect
+        }
         val isGaining = isFocused || isPressed
         val scaleSpec = if (isGaining) TvSprings.ScaleFocusGain else TvSprings.ScaleFocusLoss
         val elevationSpec = if (isGaining) TvSprings.ElevationFocusGain else TvSprings.ElevationFocusLoss
@@ -121,7 +139,12 @@ fun Modifier.tvOSFocusable(
     }
 
     LaunchedEffect(isFocused) {
-        if (!isFocused) return@LaunchedEffect
+        // Tilt is pure parallax/depth simulation, not a functional focus
+        // indicator (scale/elevation above already cover that) — skipped
+        // entirely under reduced motion rather than just sped up, matching
+        // the HIG's own "depth simulation (including parallax effects)"
+        // wording exactly, not just "less bouncy."
+        if (!isFocused || reduceMotion) return@LaunchedEffect
         // Tilt originates from the D-pad direction focus arrived from, then
         // springs back to rest — a discrete focus-transition effect, not
         // continuous pointer/gyro tracking (§1.2: Shield TV has neither).

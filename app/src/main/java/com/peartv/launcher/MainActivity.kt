@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -18,6 +19,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.layer.GraphicsLayer
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -30,6 +32,8 @@ import com.peartv.launcher.ui.launcher.LauncherViewModel
 import com.peartv.launcher.ui.launcher.LauncherViewModelFactory
 import com.peartv.launcher.ui.launcher.StatusBar
 import com.peartv.launcher.ui.launcher.rememberGraphicsLayer
+import com.peartv.launcher.ui.motion.LocalReduceMotion
+import com.peartv.launcher.ui.motion.isReduceMotionEnabled
 import com.peartv.launcher.ui.settings.SettingsScreen
 import com.peartv.launcher.ui.settings.SettingsViewModel
 import com.peartv.launcher.ui.settings.SettingsViewModelFactory
@@ -96,7 +100,14 @@ private fun PearTvLauncherApp(
 ) {
     val isDarkTheme by settingsViewModel.isDarkTheme.collectAsStateWithLifecycle()
     var screen by remember { mutableStateOf(Screen.Launcher) }
+    // Read once at startup (LocalReduceMotion's own doc) — every focus
+    // animation in ui/focus/TvFocusable.kt consults this to skip tilt
+    // entirely and snap (not spring) scale/elevation when Android's
+    // animator-duration-scale accessibility setting is off.
+    val context = LocalContext.current
+    val reduceMotion = remember { context.isReduceMotionEnabled() }
 
+    CompositionLocalProvider(LocalReduceMotion provides reduceMotion) {
     PearTvLauncherTheme(darkTheme = isDarkTheme) {
         when (screen) {
             Screen.Launcher -> {
@@ -150,6 +161,7 @@ private fun PearTvLauncherApp(
                 )
             }
         }
+    }
     }
 }
 

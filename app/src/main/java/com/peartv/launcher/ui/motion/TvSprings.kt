@@ -24,10 +24,20 @@ object TvSprings {
         stiffness = 400f,
     )
 
-    /** Must resolve faster than scale so tilt never "lags" the scale-in. */
+    /**
+     * Originally tuned to resolve faster than [ScaleFocusGain] (stiffness
+     * 1500) so tilt never "lags" the scale-in — confirmed imperceptible on
+     * the actual reference TV at that original stiffness (3000) paired
+     * with too small an angle. Bumping the angle alone (`TvFocusable.kt`'s
+     * `MaxTiltDegrees`, 6f → 14f) while staying this fast made the same
+     * short settle window cover more than double the angular distance —
+     * confirmed on-device that this read as a snap/stutter, not a tilt.
+     * Slowed well below scale's own speed instead, prioritizing a motion
+     * that's actually visible as *motion* over the original ordering rule.
+     */
     val Tilt: SpringSpec<Float> = spring(
-        dampingRatio = 0.75f,
-        stiffness = 3000f,
+        dampingRatio = 0.8f,
+        stiffness = 350f,
     )
 
     /**
