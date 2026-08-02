@@ -34,9 +34,7 @@ import com.peartv.launcher.ui.launcher.StatusBar
 import com.peartv.launcher.ui.launcher.rememberGraphicsLayer
 import com.peartv.launcher.ui.motion.LocalReduceMotion
 import com.peartv.launcher.ui.motion.isReduceMotionEnabled
-import com.peartv.launcher.ui.settings.AppearanceSettingsScreen
-import com.peartv.launcher.ui.settings.ContentSourcesSettingsScreen
-import com.peartv.launcher.ui.settings.ScreensaverSettingsScreen
+import com.peartv.launcher.ui.settings.SettingsRoute
 import com.peartv.launcher.ui.settings.SettingsScreen
 import com.peartv.launcher.ui.settings.SettingsViewModel
 import com.peartv.launcher.ui.settings.SettingsViewModelFactory
@@ -95,9 +93,6 @@ class MainActivity : ComponentActivity() {
 }
 
 private enum class Screen { Launcher, Settings }
-
-/** §4's settings rework (`design/settings-menu.png`) — a real, if shallow, back stack: [Root] is the category list ([SettingsScreen]), each other value is one of its sub-pages. */
-private enum class SettingsRoute { Root, Appearance, ContentSources, Screensaver }
 
 @Composable
 private fun PearTvLauncherApp(
@@ -167,22 +162,16 @@ private fun PearTvLauncherApp(
                     }
                 }
                 val tmdbApiKey by settingsViewModel.tmdbApiKey.collectAsStateWithLifecycle()
-                when (settingsRoute) {
-                    SettingsRoute.Root -> SettingsScreen(
-                        onOpenAppearance = { settingsRoute = SettingsRoute.Appearance },
-                        onOpenContentSources = { settingsRoute = SettingsRoute.ContentSources },
-                        onOpenScreensaver = { settingsRoute = SettingsRoute.Screensaver },
-                    )
-                    SettingsRoute.Appearance -> AppearanceSettingsScreen(
-                        isDarkTheme = isDarkTheme,
-                        onDarkThemeChange = settingsViewModel::setDarkTheme,
-                    )
-                    SettingsRoute.ContentSources -> ContentSourcesSettingsScreen(
-                        tmdbApiKey = tmdbApiKey,
-                        onTmdbApiKeySave = settingsViewModel::setTmdbApiKey,
-                    )
-                    SettingsRoute.Screensaver -> ScreensaverSettingsScreen()
-                }
+                SettingsScreen(
+                    route = settingsRoute,
+                    isDarkTheme = isDarkTheme,
+                    tmdbApiKey = tmdbApiKey,
+                    onDarkThemeChange = settingsViewModel::setDarkTheme,
+                    onTmdbApiKeySave = settingsViewModel::setTmdbApiKey,
+                    onOpenAppearance = { settingsRoute = SettingsRoute.Appearance },
+                    onOpenContentSources = { settingsRoute = SettingsRoute.ContentSources },
+                    onOpenScreensaver = { settingsRoute = SettingsRoute.Screensaver },
+                )
             }
         }
     }
