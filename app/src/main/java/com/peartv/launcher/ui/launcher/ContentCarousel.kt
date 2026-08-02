@@ -1,9 +1,12 @@
 package com.peartv.launcher.ui.launcher
 
 import android.util.Log
-import androidx.compose.animation.Crossfade
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.focusable
@@ -56,11 +59,11 @@ import com.peartv.launcher.ui.focus.FocusGainMillis
 import com.peartv.launcher.ui.focus.FocusLossMillis
 import kotlinx.coroutines.delay
 
-/** How long a poster holds before either playing its trailer (if published) or advancing — the "about 5 seconds" the user asked for. */
-private const val PosterHoldMillis = 5000L
+/** How long a poster holds before either playing its trailer (if published) or advancing — user-directed, raised from the original 5s. */
+private const val PosterHoldMillis = 8000L
 
-/** Matches [HeroBanner]'s own crossfade duration — one consistent transition speed for "the hero region's content is changing" across both composables. */
-private const val CarouselCrossfadeMillis = 400
+/** Right-to-left slide transition speed between carousel items — user-directed (replaced the original crossfade). Kept at the same duration [HeroBanner]'s own crossfade used, for a consistent transition speed across both composables even though the shape of the transition itself now differs. */
+private const val CarouselTransitionMillis = 400
 
 /** Ambient/background trailer playback — deliberately silent by default (this is a passively-cycling home-screen surface, not something the user opened to watch); flip if that reads wrong on-device. */
 private const val TrailerMuted = true
@@ -93,7 +96,7 @@ private enum class CarouselPhase { Poster, Trailer }
  *
  * Renders [channel]'s programs one at a time, full-bleed. Each poster holds
  * for [PosterHoldMillis], then — if [ChannelProgram.previewVideoUri] is
- * published — crossfades into playing that trailer (via `media3`
+ * published — slides into playing that trailer (via `media3`
  * `ExoPlayer`/`PlayerView`, embedded through `AndroidView`) until it ends or
  * errors, at which point the carousel advances to the next program and the
  * cycle repeats. A program with no preview video simply advances after the
@@ -221,12 +224,18 @@ fun ContentCarousel(
                 color = indicatorColor.copy(alpha = focusIndicatorAlpha * 0.5f),
             ),
     ) {
-        Crossfade(
+        AnimatedContent(
             targetState = index to phase,
-            animationSpec = tween(CarouselCrossfadeMillis),
+            transitionSpec = {
+                // User-directed: right-to-left slide — new content enters
+                // from the right edge, previous content continues on
+                // leftward off-screen, replacing the original crossfade.
+                slideInHorizontally(animationSpec = tween(CarouselTransitionMillis)) { fullWidth -> fullWidth } togetherWith
+                    slideOutHorizontally(animationSpec = tween(CarouselTransitionMillis)) { fullWidth -> -fullWidth }
+            },
             label = "carouselContent",
         ) { (crossfadeIndex, crossfadePhase) ->
-            val crossfadeProgram = channel.programs.getOrNull(crossfadeIndex) ?: return@Crossfade
+            val crossfadeProgram = channel.programs.getOrNull(crossfadeIndex) ?: return@AnimatedContent
             when (crossfadePhase) {
                 CarouselPhase.Poster -> PosterBackdrop(crossfadeProgram, resolvedBackdrops[crossfadeIndex])
                 CarouselPhase.Trailer -> TrailerPlayer(
