@@ -34,6 +34,9 @@ import com.peartv.launcher.ui.launcher.StatusBar
 import com.peartv.launcher.ui.launcher.rememberGraphicsLayer
 import com.peartv.launcher.ui.motion.LocalReduceMotion
 import com.peartv.launcher.ui.motion.isReduceMotionEnabled
+import com.peartv.launcher.ui.settings.AppearanceSettingsScreen
+import com.peartv.launcher.ui.settings.ContentSourcesSettingsScreen
+import com.peartv.launcher.ui.settings.ScreensaverSettingsScreen
 import com.peartv.launcher.ui.settings.SettingsScreen
 import com.peartv.launcher.ui.settings.SettingsViewModel
 import com.peartv.launcher.ui.settings.SettingsViewModelFactory
@@ -93,6 +96,9 @@ class MainActivity : ComponentActivity() {
 
 private enum class Screen { Launcher, Settings }
 
+/** §4's settings rework (`design/settings-menu.png`) — a real, if shallow, back stack: [Root] is the category list ([SettingsScreen]), each other value is one of its sub-pages. */
+private enum class SettingsRoute { Root, Appearance, ContentSources, Screensaver }
+
 @Composable
 private fun PearTvLauncherApp(
     launcherViewModel: LauncherViewModel,
@@ -143,22 +149,40 @@ private fun PearTvLauncherApp(
                 }
             }
             Screen.Settings -> {
+                var settingsRoute by remember { mutableStateOf(SettingsRoute.Root) }
                 // Without this, the hardware/remote BACK key falls through to
                 // the Activity's default back behavior (finish/move-to-back)
                 // since there's no back-stack owner here — confirmed
                 // on-device: it exited the entire launcher back to whatever
-                // was foregrounded before it, rather than returning to
-                // Screen.Launcher the way the on-screen "Back" button
-                // already correctly does.
-                BackHandler { screen = Screen.Launcher }
+                // was foregrounded before it. One level at a time: a sub-page
+                // pops to the root category list first; only Back from the
+                // root itself returns to the launcher — same layered-
+                // BackHandler convention `LauncherScreen`'s own root key
+                // handling already uses for its own overlay stack.
+                BackHandler {
+                    if (settingsRoute != SettingsRoute.Root) {
+                        settingsRoute = SettingsRoute.Root
+                    } else {
+                        screen = Screen.Launcher
+                    }
+                }
                 val tmdbApiKey by settingsViewModel.tmdbApiKey.collectAsStateWithLifecycle()
-                SettingsScreen(
-                    isDarkTheme = isDarkTheme,
-                    tmdbApiKey = tmdbApiKey,
-                    onDarkThemeChange = settingsViewModel::setDarkTheme,
-                    onTmdbApiKeySave = settingsViewModel::setTmdbApiKey,
-                    onBack = { screen = Screen.Launcher },
-                )
+                when (settingsRoute) {
+                    SettingsRoute.Root -> SettingsScreen(
+                        onOpenAppearance = { settingsRoute = SettingsRoute.Appearance },
+                        onOpenContentSources = { settingsRoute = SettingsRoute.ContentSources },
+                        onOpenScreensaver = { settingsRoute = SettingsRoute.Screensaver },
+                    )
+                    SettingsRoute.Appearance -> AppearanceSettingsScreen(
+                        isDarkTheme = isDarkTheme,
+                        onDarkThemeChange = settingsViewModel::setDarkTheme,
+                    )
+                    SettingsRoute.ContentSources -> ContentSourcesSettingsScreen(
+                        tmdbApiKey = tmdbApiKey,
+                        onTmdbApiKeySave = settingsViewModel::setTmdbApiKey,
+                    )
+                    SettingsRoute.Screensaver -> ScreensaverSettingsScreen()
+                }
             }
         }
     }

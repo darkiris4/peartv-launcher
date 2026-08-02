@@ -1,19 +1,18 @@
 package com.peartv.launcher.ui.settings
 
-import android.content.Context
-import android.content.Intent
-import android.provider.Settings as AndroidSettings
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -22,173 +21,163 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.focus.FocusDirection
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.input.key.Key
-import androidx.compose.ui.input.key.KeyEventType
-import androidx.compose.ui.input.key.key
-import androidx.compose.ui.input.key.onPreviewKeyEvent
-import androidx.compose.ui.input.key.type
-import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalFocusManager
-import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.graphics.ColorMatrix
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
-import androidx.tv.material3.Button
 import androidx.tv.material3.MaterialTheme
-import androidx.tv.material3.Switch
 import androidx.tv.material3.Text
-import com.peartv.launcher.ui.launcher.openAppInfoSettings
+import com.peartv.launcher.R
+import com.peartv.launcher.ui.focus.tvOSFocusable
 
 /**
- * PRODUCT_SPEC.md §4's narrowly-scoped settings surface — theme toggle,
- * TMDB API key, Home Screen Channels permission CTA, and a screensaver CTA
- * (§5 #11). Not styled to the same tvOS-grade motion standard as the
- * launcher grid (§1) — this is a utility form, not part of the focus/motion
- * system that spec is about.
+ * PRODUCT_SPEC.md §4's settings surface — reworked against the real tvOS
+ * Settings reference (`design/settings-menu.png`, user-directed): a root
+ * category list (this screen) rather than the original single flat form —
+ * a big icon panel on the left, a vertical list of rounded "pill" category
+ * rows on the right, each drilling into its own sub-screen
+ * (`AppearanceSettingsScreen`/`ContentSourcesSettingsScreen`/
+ * `ScreensaverSettingsScreen`) with a real back stack (`MainActivity`'s
+ * `SettingsRoute`).
  *
- * Idle-state screensaver (§5 #11) — deliberately *not* a bundled/custom
- * ambient-video mechanism this app owns and plays itself: Android TV's own
- * Daydream system already covers exactly this (idle timeout, playback,
- * wake-on-input), and reimplementing it here would just be a worse copy of
- * something the OS already does well, with real video-asset licensing risk
- * on top (Apple's own aerial screensaver clips are copyrighted and not
- * licensed for third-party redistribution — considered and rejected).
- * User-directed: point at "Aerial Views" (a free, open-source Daydream
- * service already built for exactly this on Android TV) via a plain deep
- * link to the system's own screensaver settings, rather than this launcher
- * detecting/installing/launching anything itself.
+ * Only three categories, not the reference's full Apple TV list — this
+ * app's actual settings surface is genuinely narrow (a theme toggle, a TMDB
+ * key, two deep-link CTAs), so categories exist here to group *that*
+ * content sensibly, not to reproduce Apple TV's own unrelated categories
+ * (Profiles and Accounts, AirPlay, Remotes and Devices, etc. have no
+ * equivalent in this app at all).
  *
- * No `TextField` in `androidx.tv.material3` (checked directly against the
- * 1.0.0 artifact, not assumed) — `BasicTextField` from Compose Foundation
- * is used for the API key input instead, manually styled.
- *
- * The Channels permission CTA deep-links to this app's App Info settings
- * page rather than a specific "grant TV listings access" action — no
- * confirmed direct deep link for that special permission, and App Info is
- * guaranteed to exist and let the user find it manually. §2.4/task #20 owns
- * actually checking/using the grant; this screen only offers the entry point.
- * [openAppInfoSettings] (`ui/launcher/ChannelsPermissionPrompt.kt`) is
- * shared with that file's own identical CTA on the first-launch prompt
- * (Decisions Log) rather than duplicated here.
+ * The left icon panel shows this app's own adaptive launcher icon
+ * (`R.mipmap.ic_launcher`) — the reference's own left panel is Apple TV's
+ * app icon in the identical role, a brand-identity anchor beside the list,
+ * not a per-row contextual image.
  */
 @Composable
 fun SettingsScreen(
-    isDarkTheme: Boolean,
-    tmdbApiKey: String?,
-    onDarkThemeChange: (Boolean) -> Unit,
-    onTmdbApiKeySave: (String) -> Unit,
-    onBack: () -> Unit,
+    onOpenAppearance: () -> Unit,
+    onOpenContentSources: () -> Unit,
+    onOpenScreensaver: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val context = LocalContext.current
-    val focusManager = LocalFocusManager.current
-    val themeFocusRequester = remember { FocusRequester() }
-    var keyInput by remember(tmdbApiKey) { mutableStateOf(tmdbApiKey.orEmpty()) }
+    val firstRowFocusRequester = remember { FocusRequester() }
 
-    Column(
-        modifier = modifier
-            .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
-            .padding(48.dp),
-    ) {
-        Text(
-            text = "Settings",
-            style = MaterialTheme.typography.headlineMedium,
-            color = MaterialTheme.colorScheme.onBackground,
-        )
-        Spacer(modifier = Modifier.height(32.dp))
-
+    SettingsPageScaffold(title = "Settings", modifier = modifier) {
         Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
+            horizontalArrangement = Arrangement.spacedBy(SettingsIconListSpacing),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text(text = "Dark theme", color = MaterialTheme.colorScheme.onBackground)
-            Switch(
-                checked = isDarkTheme,
-                onCheckedChange = onDarkThemeChange,
-                modifier = Modifier.focusRequester(themeFocusRequester),
-            )
-        }
+            Box(
+                modifier = Modifier
+                    .size(SettingsIconPanelSize)
+                    .clip(RoundedCornerShape(SettingsIconPanelCornerRadius)),
+            ) {
+                // `R.mipmap.ic_launcher` itself is an `<adaptive-icon>` XML
+                // (foreground + background composited by the OS's own
+                // launcher icon renderer) — `painterResource` doesn't support
+                // that format at all ("Only VectorDrawables and rasterized
+                // asset types are supported"), confirmed on-device as a
+                // startup crash the moment this screen composed. Layering the
+                // same two real layers manually — the background is a plain
+                // VectorDrawable, which `painterResource` *does* support —
+                // reproduces the identical icon art without needing the OS's
+                // own adaptive-icon machinery.
+                //
+                // Grayscale (user-directed, against the reference's own muted
+                // gray Apple TV mark) — a saturation-0 ColorMatrix rather than
+                // a manually-drawn gray asset, so this stays the app's real
+                // icon art, just desaturated, not a separate asset to keep in
+                // sync with it.
+                val grayscale = remember { ColorFilter.colorMatrix(ColorMatrix().apply { setToSaturation(0f) }) }
+                Image(
+                    painter = painterResource(R.drawable.ic_launcher_background),
+                    contentDescription = null,
+                    colorFilter = grayscale,
+                    modifier = Modifier.fillMaxSize(),
+                )
+                Image(
+                    painter = painterResource(R.mipmap.ic_launcher_foreground),
+                    contentDescription = null,
+                    colorFilter = grayscale,
+                    modifier = Modifier.fillMaxSize(),
+                )
+            }
 
-        Spacer(modifier = Modifier.height(32.dp))
-
-        Text(text = "TMDB API Key", color = MaterialTheme.colorScheme.onBackground)
-        Spacer(modifier = Modifier.height(8.dp))
-        BasicTextField(
-            value = keyInput,
-            onValueChange = { keyInput = it },
-            singleLine = true,
-            textStyle = TextStyle(
-                color = MaterialTheme.colorScheme.onSurface,
-                fontSize = MaterialTheme.typography.bodyLarge.fontSize,
-            ),
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(MaterialTheme.colorScheme.surface, RoundedCornerShape(8.dp))
-                .padding(16.dp)
-                // Confirmed on-device: a focused single-line BasicTextField
-                // traps DPAD_UP/DOWN for cursor movement by default — since
-                // there's only one line, that movement is meaningless here,
-                // but it left focus with nowhere to go, stuck in the field
-                // with no way out via remote. Intercept both directions and
-                // move focus explicitly instead; DPAD_LEFT/RIGHT still work
-                // normally for actual cursor movement within the text.
-                .onPreviewKeyEvent { event ->
-                    if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
-                    when (event.key) {
-                        Key.DirectionDown -> {
-                            focusManager.moveFocus(FocusDirection.Down)
-                            true
-                        }
-                        Key.DirectionUp -> {
-                            focusManager.moveFocus(FocusDirection.Up)
-                            true
-                        }
-                        else -> false
-                    }
-                },
-        )
-        Spacer(modifier = Modifier.height(12.dp))
-        Button(onClick = { onTmdbApiKeySave(keyInput) }) {
-            Text("Save TMDB key")
-        }
-
-        Spacer(modifier = Modifier.height(32.dp))
-
-        Text(
-            text = "Home Screen Channels content (§2.4) requires TV listings access, granted from this app's system settings page.",
-            color = MaterialTheme.colorScheme.onBackground,
-        )
-        Spacer(modifier = Modifier.height(8.dp))
-        Button(onClick = { openAppInfoSettings(context) }) {
-            Text("Open app settings")
-        }
-
-        Spacer(modifier = Modifier.height(32.dp))
-
-        Text(
-            text = "For an aerial screensaver like tvOS, install the free \"Aerial Views\" app, then choose it here.",
-            color = MaterialTheme.colorScheme.onBackground,
-        )
-        Spacer(modifier = Modifier.height(8.dp))
-        Button(onClick = { openScreensaverSettings(context) }) {
-            Text("Open Screensaver Settings")
-        }
-
-        Spacer(modifier = Modifier.weight(1f))
-        Button(onClick = onBack) {
-            Text("Back")
+            Column(
+                verticalArrangement = Arrangement.spacedBy(SettingsCategoryRowSpacing),
+                modifier = Modifier.width(SettingsCategoryListWidth),
+            ) {
+                SettingsCategoryRow(
+                    text = "Appearance",
+                    onClick = onOpenAppearance,
+                    modifier = Modifier.focusRequester(firstRowFocusRequester),
+                )
+                SettingsCategoryRow(text = "Content Sources", onClick = onOpenContentSources)
+                SettingsCategoryRow(text = "Screensaver", onClick = onOpenScreensaver)
+            }
         }
     }
 
     LaunchedEffect(Unit) {
-        themeFocusRequester.requestFocus()
+        firstRowFocusRequester.requestFocus()
     }
 }
 
-/** Android TV's own Daydream/screensaver settings page — where a Daydream service like Aerial Views gets selected and configured, not something this app has any reason to duplicate. */
-private fun openScreensaverSettings(context: Context) {
-    context.startActivity(Intent(AndroidSettings.ACTION_DREAM_SETTINGS))
+/**
+ * One row of the category list — same focus-swap-background language as
+ * `OptionsMenu.kt`'s `OptionRow` (solid `onSurface` fill + inverted text on
+ * focus, translucent `surface` fill otherwise), not the reference's literal
+ * white-on-black: that pairing only works because Apple TV Settings is
+ * always dark, where this app supports both themes, so it needs the same
+ * opposite-luminance-in-either-scheme pairing every other focusable list
+ * row in this app already relies on. Pill-shaped (a large corner radius
+ * relative to its own height) and full-width, unlike `OptionRow`'s smaller
+ * popover-scoped row, to match the reference's own proportions.
+ */
+@Composable
+private fun SettingsCategoryRow(
+    text: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    var isFocused by remember { mutableStateOf(false) }
+    val focusedBackground = MaterialTheme.colorScheme.onSurface
+    val unfocusedBackground = MaterialTheme.colorScheme.surface
+    val backgroundColor by animateColorAsState(
+        targetValue = if (isFocused) focusedBackground else unfocusedBackground,
+        label = "settingsCategoryRowBackground",
+    )
+    val contentColor = if (isFocused) MaterialTheme.colorScheme.surface else MaterialTheme.colorScheme.onSurface
+
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(SettingsCategoryRowCornerRadius))
+            .background(backgroundColor)
+            .tvOSFocusable(
+                focusedScale = 1f,
+                cornerRadius = SettingsCategoryRowCornerRadius,
+                glowColor = MaterialTheme.colorScheme.onBackground,
+                onFocusChange = { isFocused = it },
+                onClick = onClick,
+            )
+            .padding(horizontal = SettingsCategoryRowHorizontalPadding, vertical = SettingsCategoryRowVerticalPadding),
+    ) {
+        Text(text = text, color = contentColor, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+        Text(text = "›", color = contentColor, style = MaterialTheme.typography.titleMedium)
+    }
 }
+
+private val SettingsIconPanelSize = 280.dp
+private val SettingsIconPanelCornerRadius = 32.dp
+private val SettingsIconListSpacing = 48.dp
+
+/** Shared with every sub-page (`AppearanceSettingsScreen`/`ContentSourcesSettingsScreen`/`ScreensaverSettingsScreen`) so their own content column lines up under the same width the root category list uses, not an independently-guessed value per page. */
+val SettingsCategoryListWidth = 480.dp
+private val SettingsCategoryRowSpacing = 6.dp
+private val SettingsCategoryRowCornerRadius = 28.dp
+private val SettingsCategoryRowHorizontalPadding = 28.dp
+private val SettingsCategoryRowVerticalPadding = 18.dp
