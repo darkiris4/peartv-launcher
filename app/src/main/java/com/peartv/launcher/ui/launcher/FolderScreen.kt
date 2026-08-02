@@ -40,6 +40,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.MaterialTheme
 import com.peartv.launcher.domain.model.TvApp
+import com.peartv.launcher.ui.theme.ambientBackground
 
 /**
  * Grid Reordering & Folders §5 "Open State (Full-Screen Focus)" — a centered
@@ -96,7 +97,7 @@ fun FolderScreen(
     Box(
         modifier = modifier
             .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background),
+            .ambientBackground(),
         contentAlignment = Alignment.Center,
     ) {
         Column(

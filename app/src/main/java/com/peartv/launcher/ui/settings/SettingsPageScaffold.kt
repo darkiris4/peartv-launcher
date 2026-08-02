@@ -1,6 +1,5 @@
 package com.peartv.launcher.ui.settings
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Spacer
@@ -21,13 +20,16 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
+import com.peartv.launcher.ui.theme.ambientBackground
 import kotlinx.coroutines.delay
 
 /**
  * Shared shell for every settings page (the root category list and each of
  * its sub-pages) — user-directed rework against the real tvOS Settings
- * reference (`design/settings-menu.png`): a centered title over a plain
- * full-bleed background, everything else specific to that one page.
+ * reference (`design/settings-menu.png`): a centered title over a full-bleed
+ * background (`ambientBackground()` — a soft global glow, not a flat fill;
+ * see `ui/theme/AmbientBackground.kt`), everything else specific to that one
+ * page.
  * Deliberately no on-screen "Back" affordance on any page — matches both
  * the reference (Apple TV Settings has none either, relying entirely on the
  * remote's own Back/Menu button) and this app's existing overlays (the
@@ -44,7 +46,7 @@ fun SettingsPageScaffold(
         horizontalAlignment = Alignment.CenterHorizontally,
         modifier = modifier
             .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
+            .ambientBackground()
             .padding(horizontal = SettingsHorizontalPadding, vertical = SettingsVerticalPadding),
     ) {
         Text(

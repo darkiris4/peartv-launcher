@@ -3,7 +3,6 @@ package com.peartv.launcher.ui.launcher
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
@@ -32,12 +31,12 @@ import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.tv.material3.MaterialTheme
 import com.peartv.launcher.domain.model.ChannelProgram
 import com.peartv.launcher.domain.model.TvApp
 import com.peartv.launcher.ui.focus.DpadDirection
 import com.peartv.launcher.ui.focus.LocalLastDpadDirection
 import com.peartv.launcher.ui.focus.directionFromKey
+import com.peartv.launcher.ui.theme.ambientBackground
 import kotlin.math.roundToInt
 
 /**
@@ -196,8 +195,7 @@ fun LauncherScreen(
         // trade-off is intentionally accepted now in favor of an unclipped
         // hero.
         modifier = modifier
-            .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background),
+            .fillMaxSize(),
     ) {
         BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
             val columnCount = columnCount(maxWidth)
@@ -213,7 +211,7 @@ fun LauncherScreen(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(MaterialTheme.colorScheme.background)
+                .ambientBackground()
                 .onPreviewKeyEvent { event ->
                     if (event.type == KeyEventType.KeyDown) {
                         directionFromKey(event.key)?.let { lastDpadDirection = it }
