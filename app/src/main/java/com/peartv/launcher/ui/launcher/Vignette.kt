@@ -26,6 +26,30 @@ const val VignetteLeftFraction = 0.14f
 /** Max opacity either vignette fade reaches at its most extreme edge ("strength") — the tray's own near-opaque panel fill (TranslucentPanelAlpha, Dimens.kt) already handles its own legibility independently, so capping this below full opacity doesn't reopen the legibility problem the vignette originally existed to solve. */
 const val VignetteMaxAlpha = 0.65f
 
+/**
+ * A second, separately-tuned vertical fade — deliberately *not* reusing
+ * [VignetteBottomFraction]/[VignetteMaxAlpha] above. That pair blends an
+ * entire Top Shelf surface into the surrounding chrome and was tuned
+ * subtle by explicit user direction ("strength and length both too
+ * much"); this pair exists specifically to guarantee legible title/
+ * metadata text over arbitrary, unpredictable photographic artwork, a
+ * stricter requirement that would force the ambient fade back toward
+ * "too much" if the two shared one tuning. Taller (covers most of the
+ * surface, not just its bottom edge) and stronger (reaches near-opaque)
+ * for exactly that reason. Callers pair this with a *fixed* dark color
+ * (`PearTvBackgroundDark`, not the theme-flipped `backgroundColor` the
+ * ambient vignette above uses) — see `HeroBanner.kt`/`ContentCarousel.kt`'s
+ * own call sites for why: real tvOS keeps Top Shelf title/metadata text a
+ * consistent white-on-dark regardless of system light/dark appearance,
+ * since the artwork behind it is arbitrary photographic content of
+ * unknown brightness. A theme-flipped scrim+text pairing (dark text on a
+ * light scrim, in light theme) can't offer that same legibility guarantee
+ * against unpredictable art the way a fixed dark scrim under fixed light
+ * text can.
+ */
+const val TopShelfTextScrimFraction = 0.75f
+const val TopShelfTextScrimMaxAlpha = 0.85f
+
 /** Sample points for [featheredEdgeStops]'s piecewise approximation of a smoothstep curve — enough for the curve to read as genuinely smooth (not visibly faceted) at the scale a full-hero/carousel gradient renders at. */
 private const val VignetteFeatherSteps = 8
 

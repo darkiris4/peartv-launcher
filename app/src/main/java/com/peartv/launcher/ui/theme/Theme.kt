@@ -41,6 +41,7 @@ fun PearTvLauncherTheme(
 ) {
     MaterialTheme(
         colorScheme = if (darkTheme) PearTvDarkColorScheme else PearTvLightColorScheme,
+        typography = PearTvTypography,
         content = content,
     )
 }

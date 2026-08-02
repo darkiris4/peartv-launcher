@@ -16,14 +16,18 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.RectangleShape
+import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.layer.GraphicsLayer
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
@@ -31,6 +35,9 @@ import coil.compose.AsyncImage
 import com.peartv.launcher.R
 import com.peartv.launcher.domain.model.TmdbBackdrop
 import com.peartv.launcher.domain.model.TvApp
+import com.peartv.launcher.ui.motion.kenBurns
+import com.peartv.launcher.ui.theme.PearTvBackgroundDark
+import com.peartv.launcher.ui.theme.PearTvOnBackgroundDark
 
 private const val HeroCrossfadeMillis = 400
 
@@ -135,6 +142,15 @@ fun HeroBanner(
         modifier = modifier
             .background(backgroundColor)
             .alpha(contentAlpha)
+            // Compose does not clip a child's drawing to its parent's layout
+            // bounds by default — only to the child's own pre-transform
+            // bounds. Without this, kenBurns()'s scale transform (KenBurns.kt)
+            // enlarges its *entire* already-clipped layer for compositing,
+            // which still paints past this Box's own bounds into whatever's
+            // stacked below it (the dock). Confirmed on-device: real app
+            // artwork/logos were visibly bleeding through the dock tray,
+            // shifting position as the zoom/pan cycled.
+            .clip(RectangleShape)
             .recordBackdropSource(backdropSourceLayer),
     ) {
         Crossfade(
@@ -143,11 +159,16 @@ fun HeroBanner(
             label = "heroBackdrop",
         ) { (backdropUrl, banner) ->
             if (backdropUrl != null) {
+                // Ambient Ken Burns motion (ui/motion/KenBurns.kt) — real
+                // artwork only, unlike Tier 2's flat sampled-color fill
+                // below, which has nothing for a zoom/pan to act on.
                 AsyncImage(
                     model = backdropUrl,
                     contentDescription = null,
                     contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxSize(),
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .kenBurns(),
                 )
             } else if (activeApp?.packageName == SystemSettingsPackageName) {
                 // Same override as AppTile's tile art — the Tier 2 fallback
@@ -287,11 +308,42 @@ fun HeroBanner(
         // no per-title identity to name here); positioned above the tray's
         // own clearance zone, same reasoning as the tray's bottom padding
         // elsewhere in this file.
+        //
+        // §5 #14 — a dedicated, taller/stronger, fixed-dark text-legibility
+        // scrim (separate from the ambient vignette above — see
+        // TopShelfTextScrimFraction's doc, Vignette.kt, for why) sits behind
+        // this title specifically. Text color is fixed near-white
+        // (PearTvOnBackgroundDark), not theme-flipped like the rest of this
+        // app's chrome — matches real tvOS's own consistent white-on-dark
+        // treatment for Top Shelf content, since the artwork behind it is
+        // arbitrary photographic content of unknown brightness, not a
+        // uniform surface color safe to theme-flip.
         if (heroBackdrop != null) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(
+                        Brush.verticalGradient(
+                            colorStops = featheredEdgeStops(
+                                color = PearTvBackgroundDark,
+                                start = 1f - TopShelfTextScrimFraction,
+                                end = 1f,
+                                maxAlpha = TopShelfTextScrimMaxAlpha,
+                            ),
+                        ),
+                    ),
+            )
             Text(
                 text = heroBackdrop.title,
-                style = MaterialTheme.typography.headlineMedium,
-                color = MaterialTheme.colorScheme.onBackground,
+                style = MaterialTheme.typography.headlineMedium.copy(
+                    fontWeight = FontWeight.SemiBold,
+                    shadow = Shadow(
+                        color = Color.Black.copy(alpha = 0.45f),
+                        offset = Offset(0f, 2f),
+                        blurRadius = 6f,
+                    ),
+                ),
+                color = PearTvOnBackgroundDark,
                 modifier = Modifier
                     .align(Alignment.BottomStart)
                     .padding(

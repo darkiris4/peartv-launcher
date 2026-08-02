@@ -33,6 +33,10 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.RectangleShape
+import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
@@ -40,6 +44,7 @@ import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -56,6 +61,9 @@ import com.peartv.launcher.domain.model.AppChannel
 import com.peartv.launcher.domain.model.ChannelProgram
 import com.peartv.launcher.ui.focus.FocusGainMillis
 import com.peartv.launcher.ui.focus.FocusLossMillis
+import com.peartv.launcher.ui.motion.kenBurns
+import com.peartv.launcher.ui.theme.PearTvBackgroundDark
+import com.peartv.launcher.ui.theme.PearTvOnBackgroundDark
 import kotlinx.coroutines.delay
 
 /** How long a poster holds before either playing its trailer (if published) or advancing — user-directed, raised from the original 5s. */
@@ -200,6 +208,12 @@ fun ContentCarousel(
         modifier = modifier
             .fillMaxSize()
             .background(backgroundColor)
+            // Same containment fix as HeroBanner.kt's outer Box — Compose
+            // doesn't clip a child's drawing to a parent's layout bounds by
+            // default, so kenBurns()'s scale transform (KenBurns.kt) still
+            // paints past this Box's own bounds without it, bleeding into
+            // the dock stacked below.
+            .clip(RectangleShape)
             .focusRequester(focusRequester)
             .focusProperties { up = upFocusRequester }
             .onFocusChanged { isFocused = it.isFocused }
@@ -284,6 +298,26 @@ fun ContentCarousel(
                 ),
         )
 
+        // Dedicated text-legibility scrim (§5 #14) — a second, taller/
+        // stronger, fixed-dark fade layered on top of the ambient vignette
+        // above; see TopShelfTextScrimFraction's own doc (Vignette.kt) for
+        // why these are two separately-tuned gradients, not one reused for
+        // both jobs.
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(
+                    Brush.verticalGradient(
+                        colorStops = featheredEdgeStops(
+                            color = PearTvBackgroundDark,
+                            start = 1f - TopShelfTextScrimFraction,
+                            end = 1f,
+                            maxAlpha = TopShelfTextScrimMaxAlpha,
+                        ),
+                    ),
+                ),
+        )
+
         ProgramMetadata(
             program = program,
             modifier = Modifier
@@ -308,12 +342,18 @@ fun ContentCarousel(
 @Composable
 private fun PosterBackdrop(program: ChannelProgram, resolvedBackdropUrl: String?) {
     val posterUri = program.posterArtUri
+    // Ambient Ken Burns motion (ui/motion/KenBurns.kt) on both real-art
+    // branches — restarts fresh per program automatically, since this
+    // whole composable is already recomposed per AnimatedContent target
+    // state (this file's own carousel Box).
     when {
         resolvedBackdropUrl != null -> AsyncImage(
             model = resolvedBackdropUrl,
             contentDescription = program.title,
             contentScale = ContentScale.Crop,
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier
+                .fillMaxSize()
+                .kenBurns(),
         )
         posterUri == null -> Box(
             modifier = Modifier
@@ -324,7 +364,9 @@ private fun PosterBackdrop(program: ChannelProgram, resolvedBackdropUrl: String?
             model = posterUri,
             contentDescription = program.title,
             contentScale = ContentScale.Crop,
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier
+                .fillMaxSize()
+                .kenBurns(),
         )
         else -> PortraitPosterBackdrop(posterUri, program.title, program.posterAspectRatio)
     }
@@ -431,25 +473,43 @@ private fun TrailerPlayer(
  * displayed program. Text only — no action button, same reasoning as
  * `ContentRows`' own "Content Rows has no Play button" decision: selecting
  * the poster itself (D-pad center) is the only way to act on it.
+ *
+ * §5 #14 — text color is fixed near-white ([PearTvOnBackgroundDark]), not
+ * the theme-flipped `MaterialTheme.colorScheme.onBackground` every other
+ * piece of chrome in this app uses. Paired with the fixed-dark text scrim
+ * above it (this composable's caller), matching real tvOS's own consistent
+ * white-on-dark treatment for Top Shelf content specifically — see
+ * `TopShelfTextScrimFraction`'s doc (Vignette.kt) for why. A subtle shadow
+ * on the title reinforces contrast further without an opaque card behind
+ * it. Weight: SemiBold for the title (primary), the rest stay at their
+ * style's own default (Normal/Medium) as secondary text.
  */
 @Composable
 private fun ProgramMetadata(
     program: ChannelProgram,
     modifier: Modifier = Modifier,
 ) {
+    val textShadow = Shadow(
+        color = Color.Black.copy(alpha = 0.45f),
+        offset = Offset(0f, 2f),
+        blurRadius = 6f,
+    )
     Column(modifier = modifier) {
         val episodeBadge = buildEpisodeBadge(program)
         if (episodeBadge != null) {
             Text(
                 text = episodeBadge,
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onBackground,
+                style = MaterialTheme.typography.labelSmall.copy(shadow = textShadow),
+                color = PearTvOnBackgroundDark,
             )
         }
         Text(
             text = program.title,
-            style = MaterialTheme.typography.headlineMedium,
-            color = MaterialTheme.colorScheme.onBackground,
+            style = MaterialTheme.typography.headlineMedium.copy(
+                fontWeight = FontWeight.SemiBold,
+                shadow = textShadow,
+            ),
+            color = PearTvOnBackgroundDark,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
@@ -457,11 +517,11 @@ private fun ProgramMetadata(
         if (description != null) {
             Text(
                 text = description,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onBackground,
+                style = MaterialTheme.typography.bodyMedium.copy(shadow = textShadow),
+                color = PearTvOnBackgroundDark,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.padding(top = 4.dp),
+                modifier = Modifier.padding(top = 8.dp),
             )
         }
         val metaLine = listOfNotNull(
@@ -472,9 +532,9 @@ private fun ProgramMetadata(
         if (metaLine.isNotBlank()) {
             Text(
                 text = metaLine,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onBackground,
-                modifier = Modifier.padding(top = 4.dp),
+                style = MaterialTheme.typography.bodySmall.copy(shadow = textShadow),
+                color = PearTvOnBackgroundDark,
+                modifier = Modifier.padding(top = 8.dp),
             )
         }
     }
