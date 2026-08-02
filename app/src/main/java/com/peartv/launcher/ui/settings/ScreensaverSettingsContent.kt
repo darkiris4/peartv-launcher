@@ -4,6 +4,7 @@ import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
 import android.provider.Settings as AndroidSettings
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -14,7 +15,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
-import androidx.tv.material3.Button
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 
@@ -22,26 +22,32 @@ import androidx.tv.material3.Text
  * `SettingsScreen`'s `SettingsRoute.Screensaver` content pane — §5 #11's
  * own resolution — deliberately not a custom idle-timeout/video-playback
  * mechanism this app owns (Decisions Log: "Idle-state screensaver —
- * deferred to Android's own Daydream system"). Just a deep link to Android
- * TV's own screensaver settings, where a Daydream service like "Aerial
- * Views" gets selected.
+ * deferred to Android's own Daydream system"). "Open System Screensaver
+ * Settings" deep-links to Android TV's own screensaver settings, where a
+ * Daydream service like "Aerial Views" gets selected — unchanged logic,
+ * now a full-width `SettingsActionRow` instead of a small centered `Button`
+ * to match this page's own row language. "Preview" is a placeholder — an
+ * in-app live preview of whatever Daydream is active isn't something
+ * Android exposes an API for.
  */
 @Composable
 fun ScreensaverSettingsContent(modifier: Modifier = Modifier) {
     val context = LocalContext.current
-    val buttonFocusRequester = remember { FocusRequester() }
+    val firstRowFocusRequester = remember { FocusRequester() }
 
     Column(modifier = modifier.fillMaxWidth()) {
         Text(
             text = "For an aerial screensaver like tvOS, install the free \"Aerial Views\" app, then choose it here.",
             color = MaterialTheme.colorScheme.onBackground,
         )
-        Spacer(modifier = Modifier.height(8.dp))
-        Button(
-            onClick = { openScreensaverSettings(context) },
-            modifier = Modifier.settingsInitialFocus(buttonFocusRequester),
-        ) {
-            Text("Open Screensaver Settings")
+        Spacer(modifier = Modifier.height(16.dp))
+        Column(verticalArrangement = Arrangement.spacedBy(SettingsRowSpacing)) {
+            SettingsActionRow(
+                text = "Open System Screensaver Settings",
+                onClick = { openScreensaverSettings(context) },
+                modifier = Modifier.settingsInitialFocus(firstRowFocusRequester),
+            )
+            SettingsActionRow(text = "Preview", onClick = {})
         }
     }
 }

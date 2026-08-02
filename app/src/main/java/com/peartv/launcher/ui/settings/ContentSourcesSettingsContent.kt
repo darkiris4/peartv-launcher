@@ -1,6 +1,7 @@
 package com.peartv.launcher.ui.settings
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -28,23 +29,66 @@ import androidx.compose.ui.unit.dp
 import androidx.tv.material3.Button
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
-import com.peartv.launcher.ui.launcher.openAppInfoSettings
+import coil.annotation.ExperimentalCoilApi
+import coil.imageLoader
 
 /**
- * `SettingsScreen`'s `SettingsRoute.ContentSources` content pane — the two
- * settings that feed the hero's own content tiers (§2.4/§3.1.1): the TMDB
- * API key (Tier 1 backdrop art) and the Home Screen Channels permission CTA
- * (Tier 3). Grouped together as "where the app's richer content comes
- * from," same reasoning both had for living on one flat page before this
- * rework.
+ * `SettingsScreen`'s `SettingsRoute.ContentSources` content pane — now a
+ * category page over two sub-pages ([MetadataProvidersSettingsContent],
+ * [TvdbConfigurationSettingsContent]) plus two direct actions. "Clear
+ * Artwork Cache" is functional (Coil's own `ImageLoader`, already configured
+ * in `PearTvLauncherApplication`'s `ImageLoaderFactory`, exposes a real,
+ * safe, reversible cache-clear — not new architecture). "Refresh Metadata"
+ * is a placeholder: this app has no existing "force re-fetch enrichment for
+ * every app" operation to hang it on, and inventing one wasn't part of this
+ * pass's scope.
  */
+@OptIn(ExperimentalCoilApi::class)
 @Composable
 fun ContentSourcesSettingsContent(
+    onOpenMetadataProviders: () -> Unit,
+    onOpenTvdbConfiguration: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val context = LocalContext.current
+    val firstRowFocusRequester = remember { FocusRequester() }
+
+    Column(
+        verticalArrangement = Arrangement.spacedBy(SettingsRowSpacing),
+        modifier = modifier.fillMaxWidth(),
+    ) {
+        SettingsCategoryRow(
+            text = "Metadata Providers",
+            onClick = onOpenMetadataProviders,
+            modifier = Modifier.settingsInitialFocus(firstRowFocusRequester),
+        )
+        SettingsCategoryRow(text = "TVDB Configuration", onClick = onOpenTvdbConfiguration)
+        SettingsActionRow(text = "Refresh Metadata", onClick = {})
+        SettingsActionRow(
+            text = "Clear Artwork Cache",
+            onClick = {
+                val loader = context.imageLoader
+                loader.memoryCache?.clear()
+                loader.diskCache?.clear()
+            },
+        )
+    }
+}
+
+/**
+ * `SettingsRoute.MetadataProviders` — the real TMDB API key field, moved
+ * here unchanged from this file's original flat page (TMDB is a metadata
+ * provider; its configuration belongs under this category now that one
+ * exists). TVDB has no real integration in this codebase at all — shown as
+ * a disabled placeholder row rather than omitted, so the two providers read
+ * as a real list rather than TMDB being the only thing here.
+ */
+@Composable
+fun MetadataProvidersSettingsContent(
     tmdbApiKey: String?,
     onTmdbApiKeySave: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val context = LocalContext.current
     val focusManager = LocalFocusManager.current
     val keyFieldFocusRequester = remember { FocusRequester() }
     var keyInput by remember(tmdbApiKey) { mutableStateOf(tmdbApiKey.orEmpty()) }
@@ -64,9 +108,9 @@ fun ContentSourcesSettingsContent(
                 .settingsInitialFocus(keyFieldFocusRequester)
                 .background(MaterialTheme.colorScheme.surface, RoundedCornerShape(8.dp))
                 .padding(16.dp)
-                // Same DPAD_UP/DOWN trap fix the original flat page already
-                // had — a single-line field has nowhere for cursor-vertical
-                // movement to go, so redirect to real focus movement.
+                // A single-line field has nowhere for cursor-vertical
+                // movement to go, so redirect DPAD_UP/DOWN to real focus
+                // movement instead of it being silently swallowed.
                 .onPreviewKeyEvent { event ->
                     if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
                     when (event.key) {
@@ -83,13 +127,38 @@ fun ContentSourcesSettingsContent(
 
         Spacer(modifier = Modifier.height(32.dp))
 
+        Text(text = "TVDB", color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Spacer(modifier = Modifier.height(4.dp))
+        Text(text = "Not yet available", color = MaterialTheme.colorScheme.tertiary)
+    }
+}
+
+/** `SettingsRoute.TvdbConfiguration` — placeholder, structurally mirroring the real TMDB key field above but not wired to any repository (no TVDB integration exists in this codebase yet). */
+@Composable
+fun TvdbConfigurationSettingsContent(modifier: Modifier = Modifier) {
+    var keyInput by remember { mutableStateOf("") }
+    val keyFieldFocusRequester = remember { FocusRequester() }
+
+    Column(modifier = modifier.fillMaxWidth()) {
         Text(
-            text = "Home Screen Channels content (§2.4) requires TV listings access, granted from this app's system settings page.",
+            text = "TVDB integration isn't available yet — this page previews the eventual layout.",
             color = MaterialTheme.colorScheme.onBackground,
         )
         Spacer(modifier = Modifier.height(8.dp))
-        Button(onClick = { openAppInfoSettings(context) }) {
-            Text("Open app settings")
-        }
+        Text(text = "TVDB API Key", color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Spacer(modifier = Modifier.height(8.dp))
+        BasicTextField(
+            value = keyInput,
+            onValueChange = { keyInput = it },
+            singleLine = true,
+            textStyle = TextStyle(
+                color = MaterialTheme.colorScheme.onSurface,
+                fontSize = MaterialTheme.typography.bodyLarge.fontSize,
+            ),
+            modifier = Modifier
+                .settingsInitialFocus(keyFieldFocusRequester)
+                .background(MaterialTheme.colorScheme.surface, RoundedCornerShape(8.dp))
+                .padding(16.dp),
+        )
     }
 }

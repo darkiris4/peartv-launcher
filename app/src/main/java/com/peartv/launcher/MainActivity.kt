@@ -1,16 +1,19 @@
 package com.peartv.launcher
 
+import android.content.res.Configuration
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -23,6 +26,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.peartv.launcher.domain.repository.ThemeMode
 import com.peartv.launcher.domain.usecase.GetInstalledAppsUseCase
 import com.peartv.launcher.domain.usecase.LaunchAppUseCase
 import com.peartv.launcher.domain.usecase.LaunchContentUseCase
@@ -43,10 +47,15 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 
 /**
- * Hosts the launcher and the (new, narrowly-scoped per §4) settings screen as
- * two states of a single Compose surface — no `Navigation-Compose` dependency
- * for just two screens; a plain enum + `mutableStateOf` is simpler and this
- * doesn't need deep-link/back-stack semantics.
+ * Hosts the launcher and the settings screen (originally §4's narrowly-scoped
+ * surface, since expanded per an explicit new ask into a real tvOS-style
+ * hierarchy — see `ui/settings/SettingsScreen.kt`'s own doc) as two states of
+ * a single Compose surface — still no `Navigation-Compose` dependency for
+ * just two top-level screens; a plain enum + `mutableStateOf` for [Screen]
+ * itself remains simpler than a nav-graph. Settings' own internal drill-down
+ * needs a real back stack now that it's 3 levels deep in places (see the
+ * `settingsBackStack` below) — that's a small `mutableStateListOf`, not
+ * `Navigation-Compose` either.
  */
 class MainActivity : ComponentActivity() {
 
@@ -65,7 +74,17 @@ class MainActivity : ComponentActivity() {
         // small, already-open file — blocking main thread for it briefly at
         // startup is the same trade every "wait for real prefs before first
         // frame" splash pattern makes.
-        val initialDarkTheme = runBlocking { app.settingsRepository.isDarkTheme.first() }
+        val initialThemeMode = runBlocking { app.settingsRepository.themeMode.first() }
+        // `Automatic` has no async Flow to read here — the system's own
+        // light/dark appearance is a synchronous `Configuration` read, same
+        // as `themeMode` itself needing to be resolved before the very
+        // first frame (this method's own doc, above).
+        val initialDarkTheme = when (initialThemeMode) {
+            ThemeMode.Dark -> true
+            ThemeMode.Light -> false
+            ThemeMode.Automatic ->
+                (resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
+        }
         setTheme(if (initialDarkTheme) R.style.Theme_PearTvLauncher else R.style.Theme_PearTvLauncher_Light)
 
         super.onCreate(savedInstanceState)
@@ -85,7 +104,7 @@ class MainActivity : ComponentActivity() {
                 ),
             )
             val settingsViewModel: SettingsViewModel = viewModel(
-                factory = SettingsViewModelFactory(app.settingsRepository, initialDarkTheme),
+                factory = SettingsViewModelFactory(app.settingsRepository, initialThemeMode),
             )
             PearTvLauncherApp(launcherViewModel, settingsViewModel)
         }
@@ -99,7 +118,16 @@ private fun PearTvLauncherApp(
     launcherViewModel: LauncherViewModel,
     settingsViewModel: SettingsViewModel,
 ) {
-    val isDarkTheme by settingsViewModel.isDarkTheme.collectAsStateWithLifecycle()
+    val themeMode by settingsViewModel.themeMode.collectAsStateWithLifecycle()
+    // `Automatic` resolves live against the system's own light/dark
+    // appearance (recomposes if it changes while the app is open); `Light`/
+    // `Dark` stay the fixed choices they always were. `PearTvLauncherTheme`
+    // itself is unchanged — still just a plain `darkTheme: Boolean`.
+    val isDarkTheme = when (themeMode) {
+        ThemeMode.Dark -> true
+        ThemeMode.Light -> false
+        ThemeMode.Automatic -> isSystemInDarkTheme()
+    }
     var screen by remember { mutableStateOf(Screen.Launcher) }
     // Read once at startup (LocalReduceMotion's own doc) — every focus
     // animation in ui/focus/TvFocusable.kt consults this to skip tilt
@@ -144,33 +172,40 @@ private fun PearTvLauncherApp(
                 }
             }
             Screen.Settings -> {
-                var settingsRoute by remember { mutableStateOf(SettingsRoute.Root) }
-                // Without this, the hardware/remote BACK key falls through to
-                // the Activity's default back behavior (finish/move-to-back)
-                // since there's no back-stack owner here — confirmed
-                // on-device: it exited the entire launcher back to whatever
-                // was foregrounded before it. One level at a time: a sub-page
-                // pops to the root category list first; only Back from the
-                // root itself returns to the launcher — same layered-
-                // BackHandler convention `LauncherScreen`'s own root key
-                // handling already uses for its own overlay stack.
+                // A real stack, not a single enum var — the hierarchy now
+                // runs 3 levels deep (Appearance → Theme →
+                // Automatic/Light/Dark), which a flat "root or not" var
+                // can't represent. `onNavigate` pushes, `onBack`/`BackHandler`
+                // pop one entry at a time — same "one level at a time"
+                // behavior the original single-level version had (a
+                // sub-page always pops toward the root first; only Back
+                // from the root itself returns to the launcher), same
+                // layered-BackHandler convention `LauncherScreen`'s own root
+                // key handling already uses for its own overlay stack.
+                // Without a BackHandler at all here, the hardware/remote
+                // BACK key falls through to the Activity's default behavior
+                // (finish/move-to-back) — confirmed on-device, before the
+                // original version of this handler existed, that it exited
+                // the entire launcher back to whatever was foregrounded
+                // before it.
+                val settingsBackStack = remember { mutableStateListOf(SettingsRoute.Root) }
                 BackHandler {
-                    if (settingsRoute != SettingsRoute.Root) {
-                        settingsRoute = SettingsRoute.Root
+                    if (settingsBackStack.size > 1) {
+                        settingsBackStack.removeAt(settingsBackStack.lastIndex)
                     } else {
                         screen = Screen.Launcher
                     }
                 }
                 val tmdbApiKey by settingsViewModel.tmdbApiKey.collectAsStateWithLifecycle()
                 SettingsScreen(
-                    route = settingsRoute,
-                    isDarkTheme = isDarkTheme,
+                    route = settingsBackStack.last(),
+                    themeMode = themeMode,
                     tmdbApiKey = tmdbApiKey,
-                    onDarkThemeChange = settingsViewModel::setDarkTheme,
+                    onThemeModeChange = settingsViewModel::setThemeMode,
                     onTmdbApiKeySave = settingsViewModel::setTmdbApiKey,
-                    onOpenAppearance = { settingsRoute = SettingsRoute.Appearance },
-                    onOpenContentSources = { settingsRoute = SettingsRoute.ContentSources },
-                    onOpenScreensaver = { settingsRoute = SettingsRoute.Screensaver },
+                    onResetSettings = settingsViewModel::resetSettings,
+                    onNavigate = { settingsBackStack.add(it) },
+                    onBack = { settingsBackStack.removeAt(settingsBackStack.lastIndex) },
                 )
             }
         }

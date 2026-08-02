@@ -3,16 +3,26 @@ package com.peartv.launcher.domain.repository
 import kotlinx.coroutines.flow.Flow
 
 /**
- * PRODUCT_SPEC.md §4's narrowly-scoped settings surface — deliberately just
- * these two things (theme choice, TMDB API key), not a general preferences
- * store. Plain [Flow], not [kotlinx.coroutines.flow.StateFlow] — callers
- * (currently just `SettingsViewModel`) own converting to hot state with
- * their own lifecycle-scoped `stateIn`, so this repository doesn't need its
- * own long-lived `CoroutineScope`.
+ * `Automatic` follows the system's own light/dark appearance
+ * (`isSystemInDarkTheme()`); `Light`/`Dark` are the pre-existing fixed
+ * choices (`PearTvLauncherTheme`'s own `darkTheme: Boolean` param is
+ * resolved from whichever of these three is active at the call site, not
+ * changed itself — see `MainActivity`).
+ */
+enum class ThemeMode { Automatic, Light, Dark }
+
+/**
+ * PRODUCT_SPEC.md §4's settings surface — expanded (per an explicit new ask,
+ * not scope creep riding in on the original narrow one) into a real tvOS-style
+ * hierarchy, but this repository itself stays just persisted preferences, not
+ * business logic. Plain [Flow], not [kotlinx.coroutines.flow.StateFlow] —
+ * callers (currently just `SettingsViewModel`) own converting to hot state
+ * with their own lifecycle-scoped `stateIn`, so this repository doesn't need
+ * its own long-lived `CoroutineScope`.
  */
 interface SettingsRepository {
-    /** Defaults to `true` (dark) — matches the app's dark-only look before this decision (Decisions Log: "Theme"). */
-    val isDarkTheme: Flow<Boolean>
+    /** Defaults to [ThemeMode.Dark] — matches the app's dark-only look before theming existed at all (Decisions Log: "Theme"), and is *not* [ThemeMode.Automatic] specifically so existing installs' behavior doesn't silently change on upgrade. */
+    val themeMode: Flow<ThemeMode>
 
     /** `null` until the user enters one via the settings screen — Tier 1 (§2.4) treats that as "TMDB unavailable," not an error. */
     val tmdbApiKey: Flow<String?>
@@ -20,10 +30,13 @@ interface SettingsRepository {
     /** Defaults to `false` — once the user dismisses the first-launch Channels permission prompt ("Not now"), it never shows again, regardless of whether the permission ends up granted later. Decisions Log: "First-launch Channels permission prompt." */
     val hasDismissedChannelsPrompt: Flow<Boolean>
 
-    suspend fun setDarkTheme(enabled: Boolean)
+    suspend fun setThemeMode(mode: ThemeMode)
 
     /** Blank/empty is normalized to `null` — see impl. */
     suspend fun setTmdbApiKey(key: String?)
 
     suspend fun setChannelsPromptDismissed()
+
+    /** System > Reset Settings — clears every persisted preference (theme mode, TMDB key, the Channels-prompt-dismissed flag) back to their defaults. */
+    suspend fun resetAll()
 }

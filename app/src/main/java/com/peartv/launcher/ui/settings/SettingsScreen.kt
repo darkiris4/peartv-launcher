@@ -1,23 +1,17 @@
 package com.peartv.launcher.ui.settings
 
-import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.Image
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -26,63 +20,60 @@ import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.ColorMatrix
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
-import androidx.tv.material3.MaterialTheme
-import androidx.tv.material3.Text
 import com.peartv.launcher.R
-import com.peartv.launcher.ui.focus.tvOSFocusable
+import com.peartv.launcher.domain.repository.ThemeMode
 
 /**
- * PRODUCT_SPEC.md §4's settings surface — reworked against the real tvOS
- * Settings reference (`design/settings-menu.png`, user-directed): a
- * category list (`SettingsRoute.Root`) that drills into sub-pages
- * (`Appearance`/`ContentSources`/`Screensaver`, `MainActivity`'s own back
- * stack for it) — but unlike the first pass at this rework, all four
- * *share one screen*, not four independent full-screen composables. The
- * icon panel and "Settings"-or-category title live here, composed exactly
- * once per settings session; only [content]'s own `when` branch swaps as
- * [route] changes. User-directed: the reference's own left icon panel never
- * moves or re-renders as you drill into a category, only the right-hand
- * pane and the title update — four separate screens each re-declaring their
- * own icon panel couldn't reproduce that (Compose has no notion that two
- * separately-composed `Image`s "are" the same persistent element, so
- * swapping between four independent screens always reads as the *whole*
- * screen changing, not just its content pane).
+ * PRODUCT_SPEC.md §4's settings surface — expanded (an explicit new ask, not
+ * scope creep riding in on the original narrow one; see Decisions Log
+ * "Settings screen reworked as a category list with drill-down sub-pages")
+ * into a real tvOS-style hierarchy: 5 root categories, most with their own
+ * sub-pages, one 3 levels deep (Appearance → Theme → Automatic/Light/Dark).
  *
- * Only three categories, not the reference's full Apple TV list — this
- * app's actual settings surface is genuinely narrow (a theme toggle, a TMDB
- * key, two deep-link CTAs), so categories exist here to group *that*
- * content sensibly, not to reproduce Apple TV's own unrelated categories
- * (Profiles and Accounts, AirPlay, Remotes and Devices, etc. have no
- * equivalent in this app at all).
+ * Still one screen, not N independent ones — the icon panel is composed
+ * exactly once per settings session and never re-renders as [route] changes
+ * (same reasoning as the original single-level rework: Compose has no notion
+ * that two separately-composed `Image`s "are" the same persistent element).
+ * Only the content pane (this file's own `when` branch) and the title swap.
+ * Single pane at every depth — no two-pane/sidebar-persists layout (that was
+ * tried and reverted earlier: two full-width panes didn't fit this app's
+ * actual screen width on-device).
  *
- * The left icon panel shows this app's own real icon art (composited from
- * `R.drawable.ic_launcher_background`/`R.mipmap.ic_launcher_foreground` —
- * see those two `Image` calls' own doc for why not the simpler
- * `R.mipmap.ic_launcher` adaptive-icon resource directly), desaturated to
- * match the reference's own muted gray Apple TV mark.
+ * [SettingsRoute]'s flat "root or not" back-handling doesn't extend to real
+ * depth, so navigation is a caller-owned back *stack* now (`MainActivity`'s
+ * `settingsBackStack`) rather than a single enum var — [onNavigate] pushes,
+ * [onBack] pops. Everything else about this screen's own shape — the
+ * persistent icon panel, single content pane, pill-row visual language — is
+ * unchanged from the original rework.
  */
-enum class SettingsRoute { Root, Appearance, ContentSources, Screensaver }
+enum class SettingsRoute(val title: String) {
+    Root("Settings"),
+    Appearance("Appearance"),
+    Theme("Theme"),
+    HomeScreen("Home Screen"),
+    TopShelfStyle("Top Shelf Style"),
+    ContentSources("Content Sources"),
+    MetadataProviders("Metadata Providers"),
+    TvdbConfiguration("TVDB Configuration"),
+    Screensaver("Screensaver"),
+    System("System"),
+    About("About PearTV"),
+    Licenses("Open Source Licenses"),
+}
 
 @Composable
 fun SettingsScreen(
     route: SettingsRoute,
-    isDarkTheme: Boolean,
+    themeMode: ThemeMode,
     tmdbApiKey: String?,
-    onDarkThemeChange: (Boolean) -> Unit,
+    onThemeModeChange: (ThemeMode) -> Unit,
     onTmdbApiKeySave: (String) -> Unit,
-    onOpenAppearance: () -> Unit,
-    onOpenContentSources: () -> Unit,
-    onOpenScreensaver: () -> Unit,
+    onResetSettings: () -> Unit,
+    onNavigate: (SettingsRoute) -> Unit,
+    onBack: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val title = when (route) {
-        SettingsRoute.Root -> "Settings"
-        SettingsRoute.Appearance -> "Appearance"
-        SettingsRoute.ContentSources -> "Content Sources"
-        SettingsRoute.Screensaver -> "Screensaver"
-    }
-
-    SettingsPageScaffold(title = title, modifier = modifier) {
+    SettingsPageScaffold(title = route.title, modifier = modifier) {
         Row(
             horizontalArrangement = Arrangement.spacedBy(SettingsIconListSpacing),
             verticalAlignment = Alignment.CenterVertically,
@@ -91,20 +82,44 @@ fun SettingsScreen(
 
             Box(modifier = Modifier.width(SettingsCategoryListWidth)) {
                 when (route) {
-                    SettingsRoute.Root -> SettingsCategoryList(
-                        onOpenAppearance = onOpenAppearance,
-                        onOpenContentSources = onOpenContentSources,
-                        onOpenScreensaver = onOpenScreensaver,
-                    )
+                    SettingsRoute.Root -> SettingsRootContent(onNavigate = onNavigate)
+
                     SettingsRoute.Appearance -> AppearanceSettingsContent(
-                        isDarkTheme = isDarkTheme,
-                        onDarkThemeChange = onDarkThemeChange,
+                        themeMode = themeMode,
+                        onOpenTheme = { onNavigate(SettingsRoute.Theme) },
                     )
+                    SettingsRoute.Theme -> ThemeSettingsContent(
+                        themeMode = themeMode,
+                        onThemeModeChange = {
+                            onThemeModeChange(it)
+                            onBack()
+                        },
+                    )
+
+                    SettingsRoute.HomeScreen -> HomeScreenSettingsContent(
+                        onOpenTopShelfStyle = { onNavigate(SettingsRoute.TopShelfStyle) },
+                    )
+                    SettingsRoute.TopShelfStyle -> TopShelfStyleSettingsContent()
+
                     SettingsRoute.ContentSources -> ContentSourcesSettingsContent(
+                        onOpenMetadataProviders = { onNavigate(SettingsRoute.MetadataProviders) },
+                        onOpenTvdbConfiguration = { onNavigate(SettingsRoute.TvdbConfiguration) },
+                    )
+                    SettingsRoute.MetadataProviders -> MetadataProvidersSettingsContent(
                         tmdbApiKey = tmdbApiKey,
                         onTmdbApiKeySave = onTmdbApiKeySave,
                     )
+                    SettingsRoute.TvdbConfiguration -> TvdbConfigurationSettingsContent()
+
                     SettingsRoute.Screensaver -> ScreensaverSettingsContent()
+
+                    SettingsRoute.System -> SystemSettingsContent(
+                        onOpenAbout = { onNavigate(SettingsRoute.About) },
+                        onOpenLicenses = { onNavigate(SettingsRoute.Licenses) },
+                        onResetSettings = onResetSettings,
+                    )
+                    SettingsRoute.About -> AboutSettingsContent()
+                    SettingsRoute.Licenses -> LicensesSettingsContent()
                 }
             }
         }
@@ -149,72 +164,27 @@ private fun SettingsIconPanel(modifier: Modifier = Modifier) {
     }
 }
 
+/** [SettingsRoute.Root] — the 5 top-level categories. */
 @Composable
-private fun SettingsCategoryList(
-    onOpenAppearance: () -> Unit,
-    onOpenContentSources: () -> Unit,
-    onOpenScreensaver: () -> Unit,
+private fun SettingsRootContent(
+    onNavigate: (SettingsRoute) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val firstRowFocusRequester = remember { FocusRequester() }
 
     Column(
-        verticalArrangement = Arrangement.spacedBy(SettingsCategoryRowSpacing),
+        verticalArrangement = Arrangement.spacedBy(SettingsRowSpacing),
         modifier = modifier.fillMaxWidth(),
     ) {
         SettingsCategoryRow(
             text = "Appearance",
-            onClick = onOpenAppearance,
+            onClick = { onNavigate(SettingsRoute.Appearance) },
             modifier = Modifier.settingsInitialFocus(firstRowFocusRequester),
         )
-        SettingsCategoryRow(text = "Content Sources", onClick = onOpenContentSources)
-        SettingsCategoryRow(text = "Screensaver", onClick = onOpenScreensaver)
-    }
-}
-
-/**
- * One row of the category list — same focus-swap-background language as
- * `OptionsMenu.kt`'s `OptionRow` (solid `onSurface` fill + inverted text on
- * focus, translucent `surface` fill otherwise), not the reference's literal
- * white-on-black: that pairing only works because Apple TV Settings is
- * always dark, where this app supports both themes, so it needs the same
- * opposite-luminance-in-either-scheme pairing every other focusable list
- * row in this app already relies on. Pill-shaped (a large corner radius
- * relative to its own height) and full-width, unlike `OptionRow`'s smaller
- * popover-scoped row, to match the reference's own proportions.
- */
-@Composable
-private fun SettingsCategoryRow(
-    text: String,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    var isFocused by remember { mutableStateOf(false) }
-    val focusedBackground = MaterialTheme.colorScheme.onSurface
-    val unfocusedBackground = MaterialTheme.colorScheme.surface
-    val backgroundColor by animateColorAsState(
-        targetValue = if (isFocused) focusedBackground else unfocusedBackground,
-        label = "settingsCategoryRowBackground",
-    )
-    val contentColor = if (isFocused) MaterialTheme.colorScheme.surface else MaterialTheme.colorScheme.onSurface
-
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        modifier = modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(SettingsCategoryRowCornerRadius))
-            .background(backgroundColor)
-            .tvOSFocusable(
-                focusedScale = 1f,
-                cornerRadius = SettingsCategoryRowCornerRadius,
-                glowColor = MaterialTheme.colorScheme.onBackground,
-                onFocusChange = { isFocused = it },
-                onClick = onClick,
-            )
-            .padding(horizontal = SettingsCategoryRowHorizontalPadding, vertical = SettingsCategoryRowVerticalPadding),
-    ) {
-        Text(text = text, color = contentColor, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
-        Text(text = "›", color = contentColor, style = MaterialTheme.typography.titleMedium)
+        SettingsCategoryRow(text = "Home Screen", onClick = { onNavigate(SettingsRoute.HomeScreen) })
+        SettingsCategoryRow(text = "Content Sources", onClick = { onNavigate(SettingsRoute.ContentSources) })
+        SettingsCategoryRow(text = "Screensaver", onClick = { onNavigate(SettingsRoute.Screensaver) })
+        SettingsCategoryRow(text = "System", onClick = { onNavigate(SettingsRoute.System) })
     }
 }
 
@@ -222,9 +192,5 @@ private val SettingsIconPanelSize = 280.dp
 private val SettingsIconPanelCornerRadius = 32.dp
 private val SettingsIconListSpacing = 48.dp
 
-/** Shared with every sub-page content composable (`AppearanceSettingsContent`/`ContentSourcesSettingsContent`/`ScreensaverSettingsContent`) so they line up under the same width the root category list uses, not an independently-guessed value per page. */
+/** Shared with every page's own content composable so they all line up under the same width the root category list uses, not an independently-guessed value per page. */
 val SettingsCategoryListWidth = 480.dp
-private val SettingsCategoryRowSpacing = 6.dp
-private val SettingsCategoryRowCornerRadius = 28.dp
-private val SettingsCategoryRowHorizontalPadding = 28.dp
-private val SettingsCategoryRowVerticalPadding = 18.dp
