@@ -36,8 +36,6 @@ import com.peartv.launcher.R
 import com.peartv.launcher.domain.model.TmdbBackdrop
 import com.peartv.launcher.domain.model.TvApp
 import com.peartv.launcher.ui.motion.kenBurns
-import com.peartv.launcher.ui.theme.PearTvBackgroundDark
-import com.peartv.launcher.ui.theme.PearTvOnBackgroundDark
 
 private const val HeroCrossfadeMillis = 400
 
@@ -313,11 +311,13 @@ fun HeroBanner(
         // scrim (separate from the ambient vignette above — see
         // TopShelfTextScrimFraction's doc, Vignette.kt, for why) sits behind
         // this title specifically. Text color is fixed near-white
-        // (PearTvOnBackgroundDark), not theme-flipped like the rest of this
-        // app's chrome — matches real tvOS's own consistent white-on-dark
-        // treatment for Top Shelf content, since the artwork behind it is
-        // arbitrary photographic content of unknown brightness, not a
-        // uniform surface color safe to theme-flip.
+        // (MaterialTheme.colorScheme.inverseOnSurface — see Theme.kt's own
+        // doc for why that role, not onBackground, is fixed regardless of
+        // theme), not theme-flipped like the rest of this app's chrome —
+        // matches real tvOS's own consistent white-on-dark treatment for Top
+        // Shelf content, since the artwork behind it is arbitrary
+        // photographic content of unknown brightness, not a uniform surface
+        // color safe to theme-flip.
         if (heroBackdrop != null) {
             Box(
                 modifier = Modifier
@@ -325,7 +325,7 @@ fun HeroBanner(
                     .background(
                         Brush.verticalGradient(
                             colorStops = featheredEdgeStops(
-                                color = PearTvBackgroundDark,
+                                color = MaterialTheme.colorScheme.scrim,
                                 start = 1f - TopShelfTextScrimFraction,
                                 end = 1f,
                                 maxAlpha = TopShelfTextScrimMaxAlpha,
@@ -343,7 +343,7 @@ fun HeroBanner(
                         blurRadius = 6f,
                     ),
                 ),
-                color = PearTvOnBackgroundDark,
+                color = MaterialTheme.colorScheme.inverseOnSurface,
                 modifier = Modifier
                     .align(Alignment.BottomStart)
                     .padding(

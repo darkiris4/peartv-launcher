@@ -37,8 +37,8 @@ const val VignetteMaxAlpha = 0.65f
  * "too much" if the two shared one tuning. Taller (covers most of the
  * surface, not just its bottom edge) and stronger (reaches near-opaque)
  * for exactly that reason. Callers pair this with a *fixed* dark color
- * (`PearTvBackgroundDark`, not the theme-flipped `backgroundColor` the
- * ambient vignette above uses) — see `HeroBanner.kt`/`ContentCarousel.kt`'s
+ * (`MaterialTheme.colorScheme.scrim`, not the theme-flipped `backgroundColor`
+ * the ambient vignette above uses) — see `HeroBanner.kt`/`ContentCarousel.kt`'s
  * own call sites for why: real tvOS keeps Top Shelf title/metadata text a
  * consistent white-on-dark regardless of system light/dark appearance,
  * since the artwork behind it is arbitrary photographic content of
