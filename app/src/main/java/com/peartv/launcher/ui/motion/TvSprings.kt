@@ -34,10 +34,19 @@ object TvSprings {
      * confirmed on-device that this read as a snap/stutter, not a tilt.
      * Slowed well below scale's own speed instead, prioritizing a motion
      * that's actually visible as *motion* over the original ordering rule.
+     *
+     * Slowed further still (350 → 180) — user-reported the tilt as only
+     * visible in the focus shadow, not on the tile content itself. An
+     * on-device audit confirmed the rotation itself was correct (a 35°
+     * diagnostic build clearly skewed the tile), just too brief at this
+     * spring's original settle speed for the eye to register on the tile's
+     * own (sharper, less forgiving than a soft shadow) edges before it
+     * relaxed back to flat. Same [MaxTiltDegrees] (14°) — only the settle
+     * time changes.
      */
     val Tilt: SpringSpec<Float> = spring(
         dampingRatio = 0.8f,
-        stiffness = 350f,
+        stiffness = 180f,
     )
 
     /**
