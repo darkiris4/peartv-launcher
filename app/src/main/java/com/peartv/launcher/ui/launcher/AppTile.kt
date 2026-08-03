@@ -239,12 +239,12 @@ fun AppTile(
                 Image(
                     painter = painter,
                     contentDescription = app.label,
-                    // Crop, not Fit — now that tiles are genuinely 16:9
-                    // (fixed above), this should rarely need to crop actual
-                    // banner art at all, since most banners are authored at
-                    // 16:9 too. Keeps the tile's flat fallback-color
+                    // Crop, not Fit — tiles are 5:3 (Dimens.kt's own doc),
+                    // while most system banners are authored at the native
+                    // 16:9, so a slight crop is the common case now, not the
+                    // rare one. Keeps the tile's flat fallback-color
                     // background from ever showing through as a letterbox
-                    // gap for the rare asset that isn't exactly 16:9.
+                    // gap regardless of the source asset's own ratio.
                     contentScale = ContentScale.Crop,
                     modifier = Modifier.fillMaxSize(),
                 )

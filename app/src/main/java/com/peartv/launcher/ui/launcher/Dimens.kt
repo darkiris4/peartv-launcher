@@ -4,9 +4,11 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 
 /**
- * PRODUCT_SPEC.md §3.1.1 Decisions Log: tiles standardize on 16:9, matching
- * the native 320x180 leanback banner (§2.2) — not the `peartv` web
- * reference's ~1.54:1 ratio. Corner radius / gap proportions carry over.
+ * PRODUCT_SPEC.md §3.1.1 Decisions Log: tiles originally standardized on
+ * 16:9, matching the native 320x180 leanback banner (§2.2) — not the
+ * `peartv` web reference's ~1.54:1 ratio. Corner radius / gap proportions
+ * carry over. User-directed follow-up: adjusted to 5:3, closer to the real
+ * tvOS reference (`design/IMG_1858.jpeg`) than the native banner ratio.
  *
  * One shared width for BOTH the top shelf and the grid — confirmed against
  * the actual `peartv` reference: `.tile-row-glass` uses the exact same
@@ -33,7 +35,7 @@ import androidx.compose.ui.unit.dp
  * columns" target.
  */
 val TileWidth = 115.dp
-const val TileAspectRatio = 16f / 9f
+const val TileAspectRatio = 5f / 3f
 val TileHeight: Dp = TileWidth / TileAspectRatio
 val TileCornerRadius = 12.dp
 val TileSpacing = 24.dp
@@ -150,7 +152,7 @@ const val OptionsMenuTargetDimAlpha = 0.5f
  * apps fill left to right, top to bottom, and a folder with fewer than
  * [FolderTileMaxThumbnails] (9 = 3×3) apps just leaves the remaining grid
  * slots empty rather than the grid shrinking to fit however many there are.
- * Each mini thumbnail keeps [TileAspectRatio] (16:9), the same as every
+ * Each mini thumbnail keeps [TileAspectRatio] (5:3), the same as every
  * other tile in this app, rather than being cropped to a square.
  */
 val FolderTileMatrixSpacing = 4.dp

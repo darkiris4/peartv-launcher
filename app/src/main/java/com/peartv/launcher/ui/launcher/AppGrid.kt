@@ -91,20 +91,23 @@ fun AppGrid(
     rowZeroFocusRequesters: List<FocusRequester> = emptyList(),
     // Defaults to the shared tray/grid constant (Dimens.kt's own doc on
     // why tray and grid tiles normally match), but `LauncherScreen` passes
-    // a larger, screen-height-derived size for its own collapsed layout —
-    // user-directed: the dock (its own row) plus exactly 3 grid rows
-    // should fill the screen, standard [TileSpacing] between them — grown
-    // instead of the tray's fixed size once the two were no longer
-    // interleaved on screen together (the tray sits well above the grid
-    // now, not sharing a row with it), so there was no longer a strong
-    // reason to keep grid tiles pinned to the tray's own smaller size.
+    // its own width-first, screen-width-derived size for its collapsed
+    // layout (PRODUCT_SPEC.md §3.1: fit exactly 6 columns across the actual
+    // measured screen width) so dock and grid tiles always match exactly.
     tileWidth: Dp = TileWidth,
+    // Vertical gap between rows — defaults to the shared [TileSpacing], but
+    // `LauncherScreen` passes a larger, evenly-redistributed value for its
+    // collapsed layout (user-directed: any vertical space left over once
+    // tiles are correctly sized by width should spread across the gaps
+    // between the dock and grid rows, not sit as one dead margin) —
+    // horizontal spacing is untouched, only this row-to-row rhythm flexes.
+    rowSpacing: Dp = TileSpacing,
 ) {
     LazyVerticalGrid(
         columns = GridCells.FixedSize(tileWidth),
         modifier = modifier,
         horizontalArrangement = Arrangement.spacedBy(TileSpacing, Alignment.CenterHorizontally),
-        verticalArrangement = Arrangement.spacedBy(TileSpacing),
+        verticalArrangement = Arrangement.spacedBy(rowSpacing),
         contentPadding = PaddingValues(
             horizontal = ScreenSafeAreaHorizontal,
             vertical = ScreenSafeAreaVertical,

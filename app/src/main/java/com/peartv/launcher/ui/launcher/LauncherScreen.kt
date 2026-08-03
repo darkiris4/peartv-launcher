@@ -212,28 +212,51 @@ fun LauncherScreen(
             val screenHeight = maxHeight
 
             // User-directed: dock and grid tiles are one uniform grid — same
-            // size, same spacing, throughout. Tile size is solved *first*,
-            // as if laying out 4 plain, identical rows (dock's own row
-            // included) across the available height — the dock's own
-            // container is what adapts to that afterward (below, at its own
-            // call site), wrapping row 0's tiles in a background panel with
-            // equal padding on every side, rather than the container
-            // dictating a size the tiles have to fit. [TopShelfItemHeight]'s
-            // reserved §1.4 focus-label space is only real for grid rows —
-            // the dock shows no label — but every row still budgets for it
-            // here so the underlying grid math treats all 4 rows the same;
-            // the dock's own panel just doesn't use the full slot it's
-            // given, its own doc explains why.
+            // size, same spacing, throughout. Width-first now (PRODUCT_SPEC.md
+            // §3.1: "sized to fit 5–6 columns... per the actual measured
+            // screen width", and the real tvOS grid reference,
+            // `design/IMG_1858.jpeg`, which shows one uniform tile size and
+            // equal spacing in both directions across every row, its own
+            // "recently used" top row included) — [collapsedGridColumns]
+            // tiles fit exactly across the available width, tile height
+            // follows from the fixed 5:3 [TileAspectRatio]. A prior
+            // height-first version of this (divide screen height into 4
+            // equal rows, derive width from that) ignored the screen's
+            // actual width entirely — confirmed on-device as dock tiles
+            // sized ~50% too wide, overflowing past the tray's own
+            // container on a 16:9 screen.
+            val collapsedGridColumns = 6
             val collapsedGridRows = 3
             val totalRows = collapsedGridRows + 1
+            val availableForColumns = maxWidth - ScreenSafeAreaHorizontal * 2
+            val collapsedTileWidth = (availableForColumns - TileSpacing * (collapsedGridColumns - 1)) / collapsedGridColumns
+            val collapsedTileHeight = collapsedTileWidth / TileAspectRatio
+            // Tile + its reserved §1.4 focus-label space — only real for
+            // grid rows (the dock shows no label), but every row still
+            // budgets for it here so the underlying grid math treats all 4
+            // rows the same; the dock's own panel just doesn't use the full
+            // slot it's given, its own doc (below) explains why.
+            val collapsedRowSlotHeight = collapsedTileHeight + FocusLabelSpacing + FocusLabelHeight
+            // User-directed: any vertical space left over once all 4 rows
+            // are sized correctly by width gets redistributed evenly across
+            // the gaps between them, so the whole block still spans the
+            // full vertical safe area edge-to-edge instead of leaving one
+            // dead gap at the bottom. Horizontal spacing (dock tile gaps,
+            // grid column gaps) is untouched — it's load-bearing for the
+            // exact 6-column fit above; only this vertical rhythm flexes.
+            // Floored at [TileSpacing] so a screen tighter than expected
+            // degrades to the old fixed gap instead of going negative.
             val availableForRows = screenHeight - ScreenSafeAreaVertical * 2
-            val collapsedRowHeight = (availableForRows - TileSpacing * (totalRows - 1)) / totalRows
-            val collapsedTileHeight = (collapsedRowHeight - FocusLabelSpacing - FocusLabelHeight).coerceAtLeast(TileHeight)
-            val collapsedTileWidth = collapsedTileHeight * TileAspectRatio
+            val rowGapCount = totalRows - 1
+            val effectiveRowSpacing = if (rowGapCount > 0) {
+                ((availableForRows - collapsedRowSlotHeight * totalRows) / rowGapCount).coerceAtLeast(TileSpacing)
+            } else {
+                TileSpacing
+            }
             // The dock's own real container height at this tile size —
             // equal [TrayPaddingVertical] padding on every side (this
             // composable's own tray-positioning doc), not the full
-            // [collapsedRowHeight] slot every row's math above assumes —
+            // [collapsedRowSlotHeight] slot every row's math above assumes —
             // replaces the old, static `TopShelfTrayHeight` constant
             // everywhere below.
             val trayHeight = collapsedTileHeight + TrayPaddingVertical * 2
@@ -241,13 +264,13 @@ fun LauncherScreen(
             // `AppGrid`'s own top `contentPadding` already adds
             // [ScreenSafeAreaVertical] again before its first row of tiles
             // actually renders, so including it here too would stack into
-            // a ~43dp gap after the dock instead of the same ~24dp
-            // [TileSpacing] every other row transition uses. This still
-            // starts the dock itself [ScreenSafeAreaVertical] from the true
-            // top (that offset is applied at the tray's own call site,
-            // below) — only the *grid's* box position accounts for its own
-            // padding canceling out here.
-            val gridCollapsedTop = trayHeight + TileSpacing
+            // a larger gap after the dock instead of the same
+            // [effectiveRowSpacing] every other row transition now uses.
+            // This still starts the dock itself [ScreenSafeAreaVertical]
+            // from the true top (that offset is applied at the tray's own
+            // call site, below) — only the *grid's* box position accounts
+            // for its own padding canceling out here.
+            val gridCollapsedTop = trayHeight + effectiveRowSpacing
             val collapsedGridHeight = screenHeight - gridCollapsedTop
 
             val columnCount = columnCount(maxWidth, collapsedTileWidth)
@@ -268,8 +291,8 @@ fun LauncherScreen(
             }
             val actualGridHeight = (
                 ScreenSafeAreaVertical * 2 +
-                    collapsedRowHeight * actualGridRows +
-                    TileSpacing * (actualGridRows - 1).coerceAtLeast(0)
+                    collapsedRowSlotHeight * actualGridRows +
+                    effectiveRowSpacing * (actualGridRows - 1).coerceAtLeast(0)
                 ).coerceAtMost(collapsedGridHeight)
 
             // Tray's own expanded-position endpoint only — see the hero
@@ -451,6 +474,7 @@ fun LauncherScreen(
                         upFocusRequesters = dockFocusRequesters,
                         rowZeroFocusRequesters = gridRowZeroFocusRequesters,
                         tileWidth = collapsedTileWidth,
+                        rowSpacing = effectiveRowSpacing,
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(actualGridHeight)
