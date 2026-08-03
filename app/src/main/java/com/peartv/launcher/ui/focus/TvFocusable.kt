@@ -8,6 +8,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
@@ -104,6 +105,12 @@ fun Modifier.tvOSFocusable(
     var isFocused by remember { mutableStateOf(false) }
     var isPressed by remember { mutableStateOf(false) }
     var longPressFired by remember { mutableStateOf(false) }
+    // Whether a plain-click (no [onLongPress]) commit is currently scheduled
+    // — see the `KeyDown` handler's own doc for why this exists as a plain
+    // flag rather than living inside `LaunchedEffect(isPressed)` the way it
+    // used to.
+    var commitPending by remember { mutableStateOf(false) }
+    val coroutineScope = rememberCoroutineScope()
     val lastDirection = LocalLastDpadDirection.current
     val shape = remember(cornerRadius) { RoundedCornerShape(cornerRadius) }
     // PRODUCT_SPEC.md §5 #7 — Apple's HIG requires depth/parallax/animated-
@@ -184,13 +191,23 @@ fun Modifier.tvOSFocusable(
                 longPressFired = true
                 onLongPress()
             }
-        } else {
-            // Brief compress-then-launch — matches tvOS's tactile "commit" feel
-            // and avoids accidental double-launch from a fast double-press (§1.1).
-            delay(PressHoldMillis)
-            onClick()
-            isPressed = false
         }
+        // The plain-click (no onLongPress) commit used to live here as an
+        // `else` branch — moved to the `KeyDown` handler below as an
+        // independently-scoped coroutine. It doesn't belong in a block keyed
+        // on `isPressed`: PRODUCT_SPEC.md §1.1/§3.3's own "80ms hold before
+        // intent fires" was specified as a settle timer (wait 80ms after the
+        // press starts, then fire, to get tvOS's tactile commit feel and
+        // guard against a fast double-press double-launching), not as a
+        // "key must still be down 80ms later" requirement. Because
+        // `LaunchedEffect(isPressed)` cancels and relaunches whenever its key
+        // changes, and `KeyUp` always sets `isPressed = false` immediately on
+        // release, any tap shorter than 80ms cancelled this coroutine before
+        // its `delay` ever completed — confirmed user-reported: a quick
+        // select press visibly started the compress animation but never
+        // actually navigated; only a hold past ~80ms (feels like "half a
+        // second" against real remote/dispatch timing) let the delay survive
+        // long enough to fire.
     }
 
     this
@@ -230,14 +247,32 @@ fun Modifier.tvOSFocusable(
                     val isOrphanedRepeat = !isPressed && event.nativeKeyEvent.repeatCount > 0
                     if (!isOrphanedRepeat) {
                         isPressed = true
+                        // Plain-click commit, scheduled independently of
+                        // `isPressed` (bug fix — see `LaunchedEffect(isPressed)`'s
+                        // own doc above for the full story): launched on this
+                        // scope, not `LaunchedEffect`, specifically so `KeyUp`
+                        // setting `isPressed = false` moments later can't cancel
+                        // it. `commitPending` blocks scheduling a *second* one
+                        // while this one is still in flight — a fast double-tap
+                        // must still only fire [onClick] once, matching
+                        // PRODUCT_SPEC.md §1.1/§3.3's "avoids accidental
+                        // double-launch from a fast double-press."
+                        if (onLongPress == null && !commitPending) {
+                            commitPending = true
+                            coroutineScope.launch {
+                                delay(PressHoldMillis)
+                                commitPending = false
+                                onClick()
+                            }
+                        }
                     }
                     true
                 }
                 KeyEventType.KeyUp -> {
                     // Only the long-press-capable branch needs to act here —
-                    // the base case's onClick already fired unconditionally
-                    // from the LaunchedEffect above, [PressHoldMillis] after
-                    // KeyDown, regardless of when KeyUp arrives.
+                    // the plain-click case's onClick is scheduled from
+                    // `KeyDown` above and fires on its own timer, independent
+                    // of this KeyUp.
                     if (onLongPress != null && isPressed && !longPressFired) {
                         onClick()
                     }
