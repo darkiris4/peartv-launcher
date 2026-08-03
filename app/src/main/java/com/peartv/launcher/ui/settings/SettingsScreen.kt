@@ -16,8 +16,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.graphics.ColorFilter
-import androidx.compose.ui.graphics.ColorMatrix
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import com.peartv.launcher.R
@@ -126,7 +125,7 @@ fun SettingsScreen(
     }
 }
 
-/** The persistent left panel — this app's real icon art, grayscale to match the reference. Composed once by [SettingsScreen] regardless of [SettingsRoute], never per-page. */
+/** The persistent left panel — the app's grey badge mark. Composed once by [SettingsScreen] regardless of [SettingsRoute], never per-page. */
 @Composable
 private fun SettingsIconPanel(modifier: Modifier = Modifier) {
     Box(
@@ -134,31 +133,13 @@ private fun SettingsIconPanel(modifier: Modifier = Modifier) {
             .size(SettingsIconPanelSize)
             .clip(RoundedCornerShape(SettingsIconPanelCornerRadius)),
     ) {
-        // `R.mipmap.ic_launcher` itself is an `<adaptive-icon>` XML
-        // (foreground + background composited by the OS's own launcher icon
-        // renderer) — `painterResource` doesn't support that format at all
-        // ("Only VectorDrawables and rasterized asset types are supported"),
-        // confirmed on-device as a startup crash the moment this screen
-        // composed. Layering the same two real layers manually — the
-        // background is a plain VectorDrawable, which `painterResource`
-        // *does* support — reproduces the identical icon art without needing
-        // the OS's own adaptive-icon machinery.
-        //
-        // Grayscale (user-directed, against the reference's own muted gray
-        // Apple TV mark) — a saturation-0 ColorMatrix rather than a
-        // manually-drawn gray asset, so this stays the app's real icon art,
-        // just desaturated, not a separate asset to keep in sync with it.
-        val grayscale = remember { ColorFilter.colorMatrix(ColorMatrix().apply { setToSaturation(0f) }) }
+        // The grey badge (design/peartv.png) is already the muted, desaturated
+        // mark for in-app use — the full-color version is reserved for outside
+        // the app (TV banner, launcher icon).
         Image(
-            painter = painterResource(R.drawable.ic_launcher_background),
+            painter = painterResource(R.drawable.app_logo_grey),
             contentDescription = null,
-            colorFilter = grayscale,
-            modifier = Modifier.fillMaxSize(),
-        )
-        Image(
-            painter = painterResource(R.mipmap.ic_launcher_foreground),
-            contentDescription = null,
-            colorFilter = grayscale,
+            contentScale = ContentScale.Crop,
             modifier = Modifier.fillMaxSize(),
         )
     }
