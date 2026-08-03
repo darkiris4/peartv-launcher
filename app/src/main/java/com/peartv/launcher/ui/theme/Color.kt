@@ -1,6 +1,9 @@
 package com.peartv.launcher.ui.theme
 
+import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
+import androidx.tv.material3.MaterialTheme
 
 // Dark palette — the app's original (and still default) look.
 val PearTvBackgroundDark = Color(0xFF000000)
@@ -27,6 +30,34 @@ val PearTvAccentDark = Color(0xFF0A84FF)
 
 /** Destructive actions (e.g. OptionsMenu's "Delete App"). */
 val PearTvErrorDark = Color(0xFFFF453A)
+
+/**
+ * Settings-only background — user-directed against the real tvOS reference
+ * (`design/settings-menu.png`): the rest of the app's true-black
+ * [PearTvBackgroundDark] made the focused-row invert to white read as a
+ * "flashbulb" jump with almost nothing in between. Lifted one step (same
+ * tone as [PearTvSurfaceDark]) — kept as its own named constant rather than
+ * reusing that one directly, since this role is deliberately independent
+ * and scoped to Settings only (the launcher grid/folder modal keep true
+ * black). Neutral gray, not the cool/blue-tinted charcoal the reference
+ * photo itself has — user-directed to leave the color temperature alone.
+ * No light-theme counterpart needed: [PearTvBackgroundLight] is already a
+ * soft off-white, not a harsh extreme, so light theme is untouched (see
+ * `settingsBackground()`).
+ */
+val PearTvSettingsBackgroundDark = Color(0xFF1C1C1E)
+
+/**
+ * Settings row (unfocused) fill — clearly lighter than
+ * [PearTvSettingsBackgroundDark] so rows read as raised pills instead of
+ * nearly blending into the page background (the same relationship the real
+ * tvOS reference has between its own row fill and background, just kept
+ * neutral instead of blue-tinted). No light-theme counterpart needed: light
+ * theme's existing row fill (`colorScheme.surface`, pure white) already
+ * sits clearly above its own soft background the same way (see
+ * `settingsRowFill()`).
+ */
+val PearTvSettingsRowFillDark = Color(0xFF333335)
 
 // Light palette — added per the tvOS photo reference (`design/`), which is a
 // light-mode capture (Decisions Log: "Theme"). Approximate values, not
@@ -60,3 +91,24 @@ val PearTvOnAccent = Color(0xFFFFFFFF)
 
 /** White content color atop [PearTvErrorDark]/[PearTvErrorLight], both themes. */
 val PearTvOnError = Color(0xFFFFFFFF)
+
+/**
+ * Settings-only background — dark theme lifts to [PearTvSettingsBackgroundDark];
+ * light theme is untouched (`colorScheme.background` is already a soft
+ * off-white, not a harsh extreme, so there's nothing to lift). The
+ * luminance check (not a `darkTheme` param) matches the existing pattern
+ * elsewhere in this app (e.g. `AppTile`'s Settings-icon override) for
+ * telling the two schemes apart without a dedicated CompositionLocal.
+ */
+@Composable
+fun MaterialTheme.settingsBackground(): Color =
+    if (colorScheme.background.luminance() < 0.5f) PearTvSettingsBackgroundDark else colorScheme.background
+
+/**
+ * Settings row (unfocused) fill — dark theme lifts to [PearTvSettingsRowFillDark];
+ * light theme reuses `colorScheme.surface` (pure white), which already sits
+ * clearly above its own soft background the same way.
+ */
+@Composable
+fun MaterialTheme.settingsRowFill(): Color =
+    if (colorScheme.background.luminance() < 0.5f) PearTvSettingsRowFillDark else colorScheme.surface

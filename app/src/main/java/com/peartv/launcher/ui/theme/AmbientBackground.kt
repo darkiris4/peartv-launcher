@@ -36,6 +36,13 @@ import androidx.tv.material3.MaterialTheme
  *
  * Deliberately theme-token-only, no raw color either way.
  *
+ * [baseColor] defaults to `colorScheme.background` (the original, still-used
+ * behavior everywhere but Settings) — `SettingsPageScaffold` passes
+ * `MaterialTheme.settingsBackground()` instead (user-directed: the true-black
+ * background elsewhere made the focused-row invert to white read as a
+ * "flashbulb" jump; Settings alone lifts one step, see that function's own
+ * doc for why nowhere else changes).
+ *
  * Not used by `HeroBanner`/`ContentCarousel`/`PortraitPosterBackdrop`,
  * whose own backdrop art, Ken Burns motion, and vignettes are a genuinely
  * content-derived treatment already (Tier 1/2's own accent/icon-color
@@ -46,8 +53,8 @@ import androidx.tv.material3.MaterialTheme
  * top of this, same as they did over the old flat fill.
  */
 @Composable
-fun Modifier.ambientBackground(): Modifier {
-    val background = MaterialTheme.colorScheme.background
+fun Modifier.ambientBackground(baseColor: Color = MaterialTheme.colorScheme.background): Modifier {
+    val background = baseColor
     val ambientTint = MaterialTheme.colorScheme.onSurfaceVariant
     return this.drawBehind {
         drawRect(background)

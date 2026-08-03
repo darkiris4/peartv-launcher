@@ -61,9 +61,18 @@ fun ContentSourcesSettingsContent(
             text = "Metadata Providers",
             onClick = onOpenMetadataProviders,
             modifier = Modifier.settingsInitialFocus(firstRowFocusRequester),
+            description = "Connect external services used to fetch artwork and details for your apps",
         )
-        SettingsCategoryRow(text = "TVDB Configuration", onClick = onOpenTvdbConfiguration)
-        SettingsActionRow(text = "Refresh Metadata", onClick = {})
+        SettingsCategoryRow(
+            text = "TVDB Configuration",
+            onClick = onOpenTvdbConfiguration,
+            description = "Connect a TVDB account for additional show and movie metadata",
+        )
+        SettingsActionRow(
+            text = "Refresh Metadata",
+            onClick = {},
+            description = "Re-fetch the latest artwork and details for your apps",
+        )
         SettingsActionRow(
             text = "Clear Artwork Cache",
             onClick = {
@@ -71,6 +80,7 @@ fun ContentSourcesSettingsContent(
                 loader.memoryCache?.clear()
                 loader.diskCache?.clear()
             },
+            description = "Frees up storage by clearing downloaded artwork; images redownload as needed",
         )
     }
 }

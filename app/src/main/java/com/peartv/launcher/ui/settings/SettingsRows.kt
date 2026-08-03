@@ -3,8 +3,10 @@ package com.peartv.launcher.ui.settings
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
@@ -13,6 +15,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -24,35 +27,82 @@ import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Switch
 import androidx.tv.material3.Text
 import com.peartv.launcher.ui.focus.tvOSFocusable
+import com.peartv.launcher.ui.theme.settingsRowFill
+
+/**
+ * Reports the currently-focused row's own [description] text (user-directed:
+ * a tip/description line below the Settings icon panel, updating live as
+ * focus moves between rows) — a setter function, not a raw `MutableState`,
+ * so `SettingsScreen` can scope *where the write actually lands* per route
+ * rather than every row sharing one always-live target.
+ *
+ * That scoping matters: `AnimatedContent`'s outgoing page is still composed
+ * (mid exit-fade) at the same time the incoming page is composing — a row on
+ * the *old* page can still gain real Android focus for a moment during that
+ * handoff (Compose's own focus system redirecting away from a row about to
+ * be disposed) and fire this same callback. A raw shared `MutableState`
+ * can't tell that write apart from a legitimate one on the page actually
+ * being shown, which is exactly what caused a confirmed-user-reported
+ * "flash" of stale/wrong description text right after entering a sub-page.
+ * `SettingsScreen`'s own provided setter closes over the route each
+ * `AnimatedContent` branch actually belongs to and only forwards the write
+ * if that route is still the active one.
+ */
+val LocalFocusedSettingsDescription = staticCompositionLocalOf<(String?) -> Unit> {
+    error("LocalFocusedSettingsDescription not provided — read only from within SettingsScreen")
+}
 
 /**
  * Shared pill-row shell every Settings row builds on — the same focus-swap-
  * background language this screen's original single `SettingsCategoryRow`
- * established: solid `onSurface` fill + inverted text on focus, `surface`
- * fill otherwise. Opposite-luminance in either theme by construction (not a
- * literal white-on-black), so it reads correctly in both the dark and light
- * scheme without a separate light-theme treatment.
+ * established: solid `onSurface` fill + inverted text on focus,
+ * [settingsRowFill] otherwise. Opposite-luminance in either theme by
+ * construction (not a literal white-on-black), so it reads correctly in both
+ * the dark and light scheme without a separate light-theme treatment.
+ *
+ * Unfocused fill is [settingsRowFill], not the plain `colorScheme.surface`
+ * every other row-like element in this app uses — user-directed against the
+ * real tvOS reference (`design/settings-menu.png`): `surface` sits too close
+ * to this screen's own background to read as a raised pill, which made the
+ * jump to the focused white fill feel like a "flashbulb" rather than a step.
+ * See `settingsRowFill()`'s own doc.
  *
  * [trailing] is the only thing that varies between row kinds — a chevron, a
  * checkmark, or nothing. [SettingsToggleRow] doesn't build on this: a real
  * `Switch` needs to be the row's *only* focusable target (see its own doc)
  * rather than living inside another focusable row.
+ *
+ * The label `Text` is deliberately *not* `Modifier.weight(1f)` — a Row with a
+ * weighted child doesn't report a well-defined intrinsic width, and this
+ * row's own width comes from an ancestor `IntrinsicSize.Max` query
+ * (`SettingsScreen`'s own doc on that). Confirmed on-device: the widest row
+ * on a page (whichever one actually determines the shared pill width) had its
+ * trailing chevron crowd right up against the label with no gap at all, since
+ * the intrinsic query undercounted the weighted text's contribution. A fixed
+ * [SettingsRowTrailingGap] plus a *separate*, empty weighted spacer fixes
+ * this: the fixed gap is unambiguous, real space that's always part of this
+ * row's own intrinsic width (so the widest row still gets a gap before its
+ * chevron), while the empty spacer (whose own intrinsic width is
+ * unambiguously zero) absorbs whatever's left over to push `trailing` to the
+ * pill's far edge on every shorter row.
  */
 @Composable
 private fun SettingsRowShell(
     text: String,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    description: String? = null,
     trailing: @Composable (contentColor: Color) -> Unit = {},
 ) {
     var isFocused by remember { mutableStateOf(false) }
     val focusedBackground = MaterialTheme.colorScheme.onSurface
-    val unfocusedBackground = MaterialTheme.colorScheme.surface
+    val unfocusedBackground = MaterialTheme.settingsRowFill()
     val backgroundColor by animateColorAsState(
         targetValue = if (isFocused) focusedBackground else unfocusedBackground,
         label = "settingsRowBackground",
     )
     val contentColor = if (isFocused) MaterialTheme.colorScheme.surface else MaterialTheme.colorScheme.onSurface
+    val setFocusedDescription = LocalFocusedSettingsDescription.current
 
     Row(
         verticalAlignment = Alignment.CenterVertically,
@@ -64,12 +114,17 @@ private fun SettingsRowShell(
                 focusedScale = 1f,
                 cornerRadius = SettingsRowCornerRadius,
                 glowColor = MaterialTheme.colorScheme.onBackground,
-                onFocusChange = { isFocused = it },
+                onFocusChange = { focused ->
+                    isFocused = focused
+                    if (focused) setFocusedDescription(description)
+                },
                 onClick = onClick,
             )
             .padding(horizontal = SettingsRowHorizontalPadding, vertical = SettingsRowVerticalPadding),
     ) {
-        Text(text = text, color = contentColor, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+        Text(text = text, color = contentColor, style = MaterialTheme.typography.titleMedium)
+        Spacer(modifier = Modifier.width(SettingsRowTrailingGap))
+        Spacer(modifier = Modifier.weight(1f))
         trailing(contentColor)
     }
 }
@@ -86,8 +141,9 @@ fun SettingsCategoryRow(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     value: String? = null,
+    description: String? = null,
 ) {
-    SettingsRowShell(text = text, onClick = onClick, modifier = modifier) { contentColor ->
+    SettingsRowShell(text = text, onClick = onClick, modifier = modifier, description = description) { contentColor ->
         if (value != null) {
             Text(
                 text = value,
@@ -116,8 +172,9 @@ fun SettingsToggleRow(
     checked: Boolean,
     onCheckedChange: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
+    description: String? = null,
 ) {
-    SettingsRowShell(text = text, onClick = { onCheckedChange(!checked) }, modifier = modifier) {
+    SettingsRowShell(text = text, onClick = { onCheckedChange(!checked) }, modifier = modifier, description = description) {
         Switch(
             checked = checked,
             onCheckedChange = onCheckedChange,
@@ -137,8 +194,9 @@ fun SettingsSelectionRow(
     selected: Boolean,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    description: String? = null,
 ) {
-    SettingsRowShell(text = text, onClick = onClick, modifier = modifier) {
+    SettingsRowShell(text = text, onClick = onClick, modifier = modifier, description = description) {
         if (selected) {
             Icon(
                 imageVector = Icons.Filled.Check,
@@ -155,8 +213,9 @@ fun SettingsActionRow(
     text: String,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    description: String? = null,
 ) {
-    SettingsRowShell(text = text, onClick = onClick, modifier = modifier)
+    SettingsRowShell(text = text, onClick = onClick, modifier = modifier, description = description)
 }
 
 /** Non-interactive label + value — e.g. Version. Not `tvOSFocusable`: there's nothing to select, matching this row's real tvOS counterpart (informational only, never highlights). */
@@ -176,8 +235,9 @@ fun SettingsInfoRow(
             text = text,
             color = MaterialTheme.colorScheme.onBackground,
             style = MaterialTheme.typography.titleMedium,
-            modifier = Modifier.weight(1f),
         )
+        Spacer(modifier = Modifier.width(SettingsRowTrailingGap))
+        Spacer(modifier = Modifier.weight(1f))
         Text(
             text = value,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -188,5 +248,15 @@ fun SettingsInfoRow(
 
 val SettingsRowCornerRadius = 28.dp
 val SettingsRowHorizontalPadding = 28.dp
-val SettingsRowVerticalPadding = 18.dp
+
+/**
+ * User-directed against the real tvOS reference (`design/settings-menu.png`,
+ * measured directly): rows there are compact to the text line, roughly a
+ * third of this row's old 18dp*2 padding — not the generous, roomier padding
+ * this app's rows used to carry.
+ */
+val SettingsRowVerticalPadding = 8.dp
 val SettingsRowSpacing = 6.dp
+
+/** Guaranteed minimum gap between a row's label and its trailing content — see [SettingsRowShell]'s own doc for why this exists as a fixed value alongside the flexible spacer, not weight alone. */
+val SettingsRowTrailingGap = 16.dp

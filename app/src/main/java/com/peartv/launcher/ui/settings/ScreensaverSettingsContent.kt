@@ -46,8 +46,13 @@ fun ScreensaverSettingsContent(modifier: Modifier = Modifier) {
                 text = "Open System Screensaver Settings",
                 onClick = { openScreensaverSettings(context) },
                 modifier = Modifier.settingsInitialFocus(firstRowFocusRequester),
+                description = "Configure screensaver timing and style in Android's system settings",
             )
-            SettingsActionRow(text = "Preview", onClick = {})
+            SettingsActionRow(
+                text = "Preview",
+                onClick = {},
+                description = "See how your screensaver will look",
+            )
         }
     }
 }

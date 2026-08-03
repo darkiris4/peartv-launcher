@@ -51,11 +51,13 @@ fun AppearanceSettingsContent(
             text = "Reduce Motion",
             checked = reduceMotion,
             onCheckedChange = { reduceMotion = it },
+            description = "Minimize animations and transitions throughout the interface",
         )
         SettingsToggleRow(
             text = "Transparency Effects",
             checked = transparencyEffects,
             onCheckedChange = { transparencyEffects = it },
+            description = "Reduce blur and see-through panels for a more solid look",
         )
     }
 }

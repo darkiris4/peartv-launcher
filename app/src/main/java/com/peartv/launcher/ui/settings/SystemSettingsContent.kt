@@ -56,7 +56,11 @@ fun SystemSettingsContent(
         )
         SettingsInfoRow(text = "Version", value = versionName)
         SettingsCategoryRow(text = "Open Source Licenses", onClick = onOpenLicenses)
-        SettingsActionRow(text = "Reset Settings", onClick = { showResetConfirm = true })
+        SettingsActionRow(
+            text = "Reset Settings",
+            onClick = { showResetConfirm = true },
+            description = "Restores all settings to their default values",
+        )
     }
 
     if (showResetConfirm) {

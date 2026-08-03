@@ -12,15 +12,19 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import com.peartv.launcher.ui.theme.ambientBackground
+import com.peartv.launcher.ui.theme.settingsBackground
 import kotlinx.coroutines.delay
 
 /**
@@ -43,16 +47,37 @@ fun SettingsPageScaffold(
     content: @Composable ColumnScope.() -> Unit,
 ) {
     Column(
-        horizontalAlignment = Alignment.CenterHorizontally,
+        // User-directed fix for the icon-shift bug: was CenterHorizontally,
+        // which re-centered the icon+content Row as a single unit every
+        // time a route's content changed width (`SettingsScreen`'s own doc
+        // on this). `Start` anchors the whole page from a fixed left edge
+        // instead, so nothing here shifts based on sibling content width —
+        // paired with the icon+description column's own new fixed width
+        // (`SettingsScreen`'s `SettingsIconColumnWidth`), the icon's
+        // position is now independent of route entirely.
+        //
+        // The title keeps its own explicit centering below
+        // (`Modifier.fillMaxWidth()` + `textAlign = Center`) rather than
+        // inheriting it from this alignment, so this fix doesn't also shift
+        // the title text off-center as a side effect.
+        horizontalAlignment = Alignment.Start,
         modifier = modifier
             .fillMaxSize()
-            .ambientBackground()
+            .ambientBackground(baseColor = MaterialTheme.settingsBackground())
             .padding(horizontal = SettingsHorizontalPadding, vertical = SettingsVerticalPadding),
     ) {
         Text(
             text = title,
-            style = MaterialTheme.typography.headlineMedium,
-            color = MaterialTheme.colorScheme.onBackground,
+            // Neither pure white nor pure black — user-directed: "opposite
+            // shades of grey" in either theme, `onSurfaceVariant` (the
+            // existing secondary-text tier) already is exactly that by
+            // construction. Bold, same Inter family as everywhere else
+            // (PearTvTypography's own doc: only fontFamily is overridden
+            // app-wide, so weight is this call site's own choice to make).
+            style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.fillMaxWidth(),
         )
         Spacer(modifier = Modifier.height(SettingsTitleSpacing))
         content()
