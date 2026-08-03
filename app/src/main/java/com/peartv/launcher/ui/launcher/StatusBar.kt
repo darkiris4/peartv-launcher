@@ -1,5 +1,7 @@
 package com.peartv.launcher.ui.launcher
 
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
@@ -18,7 +20,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.layer.GraphicsLayer
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInWindow
@@ -26,7 +31,10 @@ import androidx.compose.ui.unit.dp
 import androidx.tv.material3.Icon
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.OutlinedIconButton
+import androidx.tv.material3.OutlinedIconButtonDefaults
 import androidx.tv.material3.Text
+import com.peartv.launcher.ui.focus.FocusGainMillis
+import com.peartv.launcher.ui.focus.FocusLossMillis
 import com.peartv.launcher.ui.theme.ambientPanelTint
 import kotlinx.coroutines.delay
 import java.time.LocalTime
@@ -107,16 +115,29 @@ fun StatusBar(
             style = MaterialTheme.typography.bodyLarge,
             color = MaterialTheme.colorScheme.onBackground,
         )
+        var isGearFocused by remember { mutableStateOf(false) }
+        val gearRotation by animateFloatAsState(
+            targetValue = if (isGearFocused) 180f else 0f,
+            animationSpec = tween(if (isGearFocused) FocusGainMillis else FocusLossMillis),
+            label = "settingsGearRotation",
+        )
         // OutlinedIconButton, not IconButton — user-directed: a ring/outline
-        // selector around the gear, not a solid filled circle.
+        // selector around the gear, not a solid filled circle. The button's
+        // own default focused state fills the container solid (same color as
+        // its own focused border, so the ring became invisible) — forced
+        // transparent here so only the border ring shows.
         OutlinedIconButton(
             onClick = onSettingsClick,
-            modifier = Modifier.focusRequester(settingsFocusRequester),
+            colors = OutlinedIconButtonDefaults.colors(focusedContainerColor = Color.Transparent),
+            modifier = Modifier
+                .focusRequester(settingsFocusRequester)
+                .onFocusChanged { isGearFocused = it.isFocused },
         ) {
             Icon(
                 imageVector = Icons.Filled.Settings,
                 contentDescription = "Settings",
                 tint = MaterialTheme.colorScheme.onBackground,
+                modifier = Modifier.graphicsLayer { rotationZ = gearRotation },
             )
         }
     }
