@@ -112,21 +112,19 @@ val TopShelfTrayHeight: Dp = TileHeight + TrayPaddingVertical * 2
 /**
  * Hero/tray/grid collapsing-header behavior — tvOS photo reference
  * (`design/IMG_1858.jpeg` vs `IMG_1859.jpeg`): focused-in-tray shows a large
- * hero with only a sliver of the grid's first row peeking below the fold;
- * focused-in-grid collapses the hero down to just the tray's own height (the
- * backdrop artwork fades out entirely as it collapses), sitting flush at the
- * very top so every grid row becomes visible. See `LauncherScreen`'s
+ * hero, tray sitting [HeroGridPeekHeight] above the very bottom edge;
+ * focused-in-grid collapses the tray up to flush with the top, backdrop
+ * artwork fading out entirely as it collapses (`LauncherScreen`'s
  * `heroExpansion` animation — these are its two endpoints, not a fixed
- * split.
- *
- * [HeroGridPeekHeight] must clear `AppGrid`'s own top `contentPadding`
- * ([ScreenSafeAreaVertical]) before any tile pixel is visible at all —
- * confirmed on-device: an earlier, smaller value (24dp, less than that
- * padding alone) left zero pixels of row 1 visible, not a sliver. This adds
- * a real ~20dp peek on top of clearing that padding.
+ * split). Originally sized to keep a sliver of the grid's own first row
+ * peeking out below hero at full expansion; grid now instead animates
+ * fully off-screen at that endpoint (`LauncherScreen.kt`'s own doc on its
+ * hero `Box`) since that peeking sliver was the cause of a confirmed-on-
+ * device background-seam bug, but this constant still sets the tray's own
+ * breathing room from the bottom edge in the expanded state — repurposed,
+ * not retired.
  */
 val HeroGridPeekHeight = ScreenSafeAreaVertical + 20.dp
-const val AppGridWeight = 1f
 
 /**
  * Grid Reordering & Folders §2 — long-press-to-enter-Edit-Mode threshold and

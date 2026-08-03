@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -17,6 +18,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.geometry.Offset
@@ -30,6 +32,7 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.lerp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.peartv.launcher.domain.model.ChannelProgram
 import com.peartv.launcher.domain.model.TvApp
@@ -65,8 +68,10 @@ import kotlin.math.roundToInt
  * `onPreviewKeyEvent` rather than duplicated per tile.
  *
  * Collapsing-header behavior (Decisions Log: "Hero/tray collapse-on-grid-
- * focus"): [heroHeight] animates between two endpoints — expanded (focus is
- * on a tray tile) and collapsed (focus is in the grid).
+ * focus"): hero, tray, and the grid each animate independently off
+ * [expansionProgress] — expanded (focus is on a tray tile) and collapsed
+ * (focus is in the grid) — see the hero `Box`'s own doc, below, for the
+ * three-layer mechanics.
  *
  * Grid Reordering & Folders — this composable takes [viewModel] directly
  * (not exploded into ~20 individual state/callback parameters, unlike the
@@ -198,14 +203,80 @@ fun LauncherScreen(
             .fillMaxSize(),
     ) {
         BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
-            val columnCount = columnCount(maxWidth)
+            // Captured into a plain local — `maxHeight` is a
+            // `BoxWithConstraintsScope` receiver property, out of reach via
+            // an implicit receiver from as deep as the grid/tray offset
+            // modifiers below sit (nested inside `CompositionLocalProvider`
+            // and two more `Box`es, each introducing their own `BoxScope`
+            // receiver first) — a plain captured local has no such limit.
+            val screenHeight = maxHeight
+
+            // User-directed: dock and grid tiles are one uniform grid — same
+            // size, same spacing, throughout. Tile size is solved *first*,
+            // as if laying out 4 plain, identical rows (dock's own row
+            // included) across the available height — the dock's own
+            // container is what adapts to that afterward (below, at its own
+            // call site), wrapping row 0's tiles in a background panel with
+            // equal padding on every side, rather than the container
+            // dictating a size the tiles have to fit. [TopShelfItemHeight]'s
+            // reserved §1.4 focus-label space is only real for grid rows —
+            // the dock shows no label — but every row still budgets for it
+            // here so the underlying grid math treats all 4 rows the same;
+            // the dock's own panel just doesn't use the full slot it's
+            // given, its own doc explains why.
+            val collapsedGridRows = 3
+            val totalRows = collapsedGridRows + 1
+            val availableForRows = screenHeight - ScreenSafeAreaVertical * 2
+            val collapsedRowHeight = (availableForRows - TileSpacing * (totalRows - 1)) / totalRows
+            val collapsedTileHeight = (collapsedRowHeight - FocusLabelSpacing - FocusLabelHeight).coerceAtLeast(TileHeight)
+            val collapsedTileWidth = collapsedTileHeight * TileAspectRatio
+            // The dock's own real container height at this tile size —
+            // equal [TrayPaddingVertical] padding on every side (this
+            // composable's own tray-positioning doc), not the full
+            // [collapsedRowHeight] slot every row's math above assumes —
+            // replaces the old, static `TopShelfTrayHeight` constant
+            // everywhere below.
+            val trayHeight = collapsedTileHeight + TrayPaddingVertical * 2
+            // `trayHeight`, not `ScreenSafeAreaVertical + trayHeight` —
+            // `AppGrid`'s own top `contentPadding` already adds
+            // [ScreenSafeAreaVertical] again before its first row of tiles
+            // actually renders, so including it here too would stack into
+            // a ~43dp gap after the dock instead of the same ~24dp
+            // [TileSpacing] every other row transition uses. This still
+            // starts the dock itself [ScreenSafeAreaVertical] from the true
+            // top (that offset is applied at the tray's own call site,
+            // below) — only the *grid's* box position accounts for its own
+            // padding canceling out here.
+            val gridCollapsedTop = trayHeight + TileSpacing
+            val collapsedGridHeight = screenHeight - gridCollapsedTop
+
+            val columnCount = columnCount(maxWidth, collapsedTileWidth)
             // Only ever as many as the grid's own row 0 actually has tiles
             // for (see the `dockFocusRequesters` doc above) — a grid with
             // fewer items than columns can't fill a whole row 0.
             val rowZeroCount = minOf(columnCount, gridItems.size)
             val gridRowZeroFocusRequesters = remember(rowZeroCount) { List(rowZeroCount) { FocusRequester() } }
+            // Don't reserve the full [collapsedGridRows]-row height when
+            // there isn't enough content to need it — confirmed on-device
+            // this read as dead space below the actual last row, not
+            // "filling the screen." Caps at [collapsedGridRows]; scrolls
+            // (unchanged `AppGrid` behavior) for anything beyond that.
+            val actualGridRows = if (columnCount > 0) {
+                ((gridItems.size + columnCount - 1) / columnCount).coerceIn(1, collapsedGridRows)
+            } else {
+                collapsedGridRows
+            }
+            val actualGridHeight = (
+                ScreenSafeAreaVertical * 2 +
+                    collapsedRowHeight * actualGridRows +
+                    TileSpacing * (actualGridRows - 1).coerceAtLeast(0)
+                ).coerceAtMost(collapsedGridHeight)
+
+            // Tray's own expanded-position endpoint only — see the hero
+            // Box's own doc below for why grid no longer uses this (it
+            // now animates all the way to `maxHeight`, off-screen, instead
+            // of stopping [HeroGridPeekHeight] short of it).
             val expandedHeroHeight = maxHeight - HeroGridPeekHeight
-            val heroHeight = TopShelfTrayHeight + (expandedHeroHeight - TopShelfTrayHeight) * expansionProgress
 
     CompositionLocalProvider(LocalLastDpadDirection provides lastDpadDirection) {
         Box(
@@ -261,28 +332,68 @@ fun LauncherScreen(
                     }
                 },
         ) {
-            Column(
-                // Deliberately NOT blocking background focus with
-                // `focusProperties { canFocus = false }` while an overlay is
-                // open, despite the theoretical risk of D-pad focus-search
-                // reaching an obscured tile behind it: confirmed on a real
-                // device that toggling a subtree's focusability in the same
-                // recomposition pass where `OptionsMenu`/`FolderScreen`
-                // request focus on themselves crashes with "ActiveParent with
-                // no focused child" — a real Compose focus-system ordering
-                // hazard, not something worth fighting for a polish item this
-                // minor. The overlay's own initial `requestFocus()` already
-                // wins focus in practice.
+            // Collapsing-header behavior (Decisions Log: "Hero/tray collapse-
+            // on-grid-focus"), reworked from a height-animating hero Box +
+            // Column reflow into three independently-offset layers sharing
+            // one Box — user-directed: the previous version's hero Box
+            // shrank only down to `expandedHeroHeight` (= maxHeight minus
+            // [HeroGridPeekHeight]), always leaving a thin sliver of grid
+            // visible even at full expansion, and that sliver's own
+            // `ambientBackground`-lit tone read as a hard seam against
+            // hero's own vignette fading to a flat tone right above it —
+            // confirmed on-device, survived even after fading the vignette
+            // toward `ambientPanelTint()` instead of flat background (still
+            // two independently-animated regions meeting at a boundary).
+            // Hero's backdrop art now always fills the full screen (fading
+            // its own opacity via [expansionProgress] as `contentAlpha`,
+            // already wired for this) instead of shrinking away — no more
+            // boundary for a seam to form at, because there's no more grid
+            // sliver peeking out from under hero at all. Tray and grid each
+            // animate their own Y offset directly instead of relying on
+            // Column reflow (grid) / [Alignment.BottomCenter] of a resizing
+            // parent (tray) to reposition them as hero's height changed.
+            //
+            // Deliberately NOT blocking background focus with
+            // `focusProperties { canFocus = false }` while an overlay is
+            // open, despite the theoretical risk of D-pad focus-search
+            // reaching an obscured tile behind it: confirmed on a real
+            // device that toggling a subtree's focusability in the same
+            // recomposition pass where `OptionsMenu`/`FolderScreen`
+            // request focus on themselves crashes with "ActiveParent with
+            // no focused child" — a real Compose focus-system ordering
+            // hazard, not something worth fighting for a polish item this
+            // minor. The overlay's own initial `requestFocus()` already
+            // wins focus in practice.
+            Box(
                 modifier = Modifier.fillMaxSize(),
             ) {
                 val primaryChannel = tier3Channels.firstOrNull()
+
+                val trayOffsetY = lerp(ScreenSafeAreaVertical, expandedHeroHeight - trayHeight, expansionProgress)
+                // How far above hero's own (now-static) bottom edge the
+                // tray currently sits — passed down so the hero/carousel's
+                // own title text can clear it correctly at every point in
+                // the animation, not just at the two endpoints. See
+                // `HeroBanner`'s `trayClearance` param doc.
+                val trayClearance = screenHeight - trayOffsetY
+
+                // Layer 1 (bottom): hero backdrop, always full-screen — see
+                // this Box's own doc above for why this no longer animates
+                // its own height. Composed for as long as any of its own
+                // fade-out is still visible ([expansionProgress] > 0), not
+                // gated on the discrete [isTopShelfFocused] boolean — that
+                // flips the instant focus leaves the tray, which previously
+                // unmounted this composable on the very same frame, before
+                // its own `contentAlpha` fade (already wired below) ever
+                // got to animate — confirmed on-device as a hard cut, not a
+                // fade, despite `contentAlpha` being correctly threaded
+                // through this whole time.
                 Box(
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .height(heroHeight)
+                        .fillMaxSize()
                         .onGloballyPositioned { onHeroPositioned(it.positionInWindow()) },
                 ) {
-                    if (isTopShelfFocused) {
+                    if (expansionProgress > 0f) {
                         if (primaryChannel != null) {
                             // Rapid dock navigation can swap `primaryChannel`
                             // several times within one poster's hold window.
@@ -299,7 +410,10 @@ fun LauncherScreen(
                                     resolveBackdropUrl = viewModel::resolveTmdbBackdropUrl,
                                     focusRequester = carouselFocusRequester,
                                     upFocusRequester = settingsFocusRequester,
-                                    modifier = Modifier.fillMaxSize(),
+                                    trayClearance = trayClearance,
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .alpha(expansionProgress),
                                 )
                             }
                         } else {
@@ -308,31 +422,20 @@ fun LauncherScreen(
                                 heroBackdrop = heroBackdrop,
                                 backdropSourceLayer = heroBackdropLayer,
                                 contentAlpha = expansionProgress,
+                                trayClearance = trayClearance,
                                 modifier = Modifier.fillMaxSize(),
                             )
                         }
                     }
-                    if (dockItems.isNotEmpty()) {
-                        TopShelfRow(
-                            apps = dockApps,
-                            onAppClick = viewModel::onAppClick,
-                            blurSource = heroBackdropLayer,
-                            // User-directed: Up from a dock tile should always
-                            // reach something — the carousel when this app has
-                            // one, straight to Settings otherwise (there's no
-                            // "top shelf content" to stop at for a Tier 1/2 app).
-                            upFocusRequester = if (primaryChannel != null) carouselFocusRequester else settingsFocusRequester,
-                            focusRequesters = dockFocusRequesters,
-                            downFocusRequesters = gridRowZeroFocusRequesters,
-                            onAppFocused = viewModel::onAppFocused,
-                            editMode = editMode,
-                            optionsMenuTargetId = optionsMenu?.targetId,
-                            onOpenOptionsMenu = viewModel::openOptionsMenu,
-                            onTilePositioned = onTilePositioned,
-                            modifier = Modifier.align(Alignment.BottomCenter),
-                        )
-                    }
                 }
+
+                // Layer 2 (middle): grid, slides up from fully below the
+                // fold (expanded, [expansionProgress] = 1) into its resting
+                // position right below where the tray sits when collapsed
+                // ([expansionProgress] = 0) — same resting position/height
+                // the old `Modifier.weight(AppGridWeight)` inside a Column
+                // gave it, just computed directly now that this isn't a
+                // Column anymore.
                 if (gridItems.isNotEmpty()) {
                     AppGrid(
                         items = gridItems,
@@ -347,7 +450,42 @@ fun LauncherScreen(
                         columnCount = columnCount,
                         upFocusRequesters = dockFocusRequesters,
                         rowZeroFocusRequesters = gridRowZeroFocusRequesters,
-                        modifier = Modifier.weight(AppGridWeight),
+                        tileWidth = collapsedTileWidth,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(actualGridHeight)
+                            .offset(y = lerp(screenHeight, gridCollapsedTop, 1f - expansionProgress)),
+                    )
+                }
+
+                // Layer 3 (top): tray — always fully opaque/visible, drawn
+                // last so grid tiles sliding up under it (previous layer)
+                // never cover it mid-transition. Collapsed position is
+                // [ScreenSafeAreaVertical] from the top, the same margin the
+                // grid's own contentPadding uses; expanded position is the
+                // same [Alignment.BottomCenter]-of-hero spot the old height-
+                // animating hero Box used to produce.
+                if (dockItems.isNotEmpty()) {
+                    TopShelfRow(
+                        apps = dockApps,
+                        onAppClick = viewModel::onAppClick,
+                        blurSource = heroBackdropLayer,
+                        // User-directed: Up from a dock tile should always
+                        // reach something — the carousel when this app has
+                        // one, straight to Settings otherwise (there's no
+                        // "top shelf content" to stop at for a Tier 1/2 app).
+                        upFocusRequester = if (primaryChannel != null) carouselFocusRequester else settingsFocusRequester,
+                        focusRequesters = dockFocusRequesters,
+                        downFocusRequesters = gridRowZeroFocusRequesters,
+                        onAppFocused = viewModel::onAppFocused,
+                        editMode = editMode,
+                        optionsMenuTargetId = optionsMenu?.targetId,
+                        onOpenOptionsMenu = viewModel::openOptionsMenu,
+                        onTilePositioned = onTilePositioned,
+                        tileWidth = collapsedTileWidth,
+                        modifier = Modifier
+                            .align(Alignment.TopCenter)
+                            .offset(y = trayOffsetY),
                     )
                 }
             }
@@ -427,11 +565,11 @@ fun LauncherScreen(
     }
 }
 
-/** Mirrors `GridCells.FixedSize(TileWidth)`'s own column-count math (floor of available/cell width) — `AppGrid`'s real layout, not a guess, so Edit Mode's row-based Up/Down movement lines up with what's actually on screen. */
-private fun columnCount(maxWidth: androidx.compose.ui.unit.Dp): Int {
+/** Mirrors `GridCells.FixedSize(tileWidth)`'s own column-count math (floor of available/cell width) — `AppGrid`'s real layout, not a guess, so Edit Mode's row-based Up/Down movement lines up with what's actually on screen. [tileWidth] defaults to the shared tray/grid constant, but the collapsed grid's own larger, screen-height-derived size (`LauncherScreen`'s own doc on that) must be passed here explicitly once it diverges from that default — this is real column math, not cosmetic, and Edit Mode's movement breaks silently if it drifts from whatever `AppGrid` is actually laying out. */
+private fun columnCount(maxWidth: androidx.compose.ui.unit.Dp, tileWidth: androidx.compose.ui.unit.Dp = TileWidth): Int {
     val available = maxWidth - ScreenSafeAreaHorizontal * 2
-    return ((available + TileSpacing) / (TileWidth + TileSpacing)).toInt().coerceAtLeast(1)
+    return ((available + TileSpacing) / (tileWidth + TileSpacing)).toInt().coerceAtLeast(1)
 }
 
-/** Hero collapse/expand transition duration. */
-private const val HeroExpansionMillis = 350
+/** Hero collapse/expand transition duration — not `private`: `MainActivity` reuses this so the status pill's own fade (see its own doc) settles in lockstep with the hero it's tracking, not some independently-guessed duration. */
+const val HeroExpansionMillis = 350

@@ -28,6 +28,7 @@ import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
@@ -36,6 +37,7 @@ import com.peartv.launcher.R
 import com.peartv.launcher.domain.model.TmdbBackdrop
 import com.peartv.launcher.domain.model.TvApp
 import com.peartv.launcher.ui.motion.kenBurns
+import com.peartv.launcher.ui.theme.ambientPanelTint
 
 private const val HeroCrossfadeMillis = 400
 
@@ -134,6 +136,16 @@ fun HeroBanner(
     backdropSourceLayer: GraphicsLayer,
     modifier: Modifier = Modifier,
     contentAlpha: Float = 1f,
+    // The title's own clearance from hero's bottom edge, i.e. however far
+    // above hero's bottom the tray currently sits. Used to default to
+    // `TopShelfTrayHeight` back when hero's own Box shrank to match the
+    // tray, so hero's bottom edge *was* the tray's top edge by construction.
+    // Now that hero is always full-screen and the tray animates its own
+    // independent offset (`LauncherScreen`'s hero `Box` doc), that's no
+    // longer true — a caller-supplied value keeps this title sitting just
+    // above wherever the tray actually is right now instead of a fixed
+    // distance from the (now static) screen bottom.
+    trayClearance: Dp = TopShelfTrayHeight,
 ) {
     val backgroundColor = MaterialTheme.colorScheme.background
     Box(
@@ -252,6 +264,16 @@ fun HeroBanner(
         // Transparent below) was removed per the Decisions Log's "§3.1.1
         // 'liquid glass' tray/pill styling — removed" entry.
         //
+        // Fades to `MaterialTheme.ambientPanelTint()`, not flat
+        // `backgroundColor` — confirmed on-device that fading to a flat
+        // color created a *new* hard seam of its own once `ambientBackground`
+        // (`ui/theme/AmbientBackground.kt`) gave the grid/chrome behind this
+        // hero a visible glow: the artwork faded to plain black right where
+        // the lit background began, an abrupt edge exactly like the one this
+        // vignette exists to prevent, just one step further out. Fading to
+        // the same lifted tone the tray/status pill already use keeps this
+        // edge continuous with whatever's actually behind it.
+        //
         // Bounded to the bottom [VignetteBottomFraction] of the hero via
         // explicit colorStops — an unbounded two-color Brush.verticalGradient
         // spans the *entire* height (fully transparent at the very top down
@@ -269,7 +291,7 @@ fun HeroBanner(
                 .background(
                     Brush.verticalGradient(
                         colorStops = featheredEdgeStops(
-                            color = backgroundColor,
+                            color = MaterialTheme.ambientPanelTint(),
                             start = 1f - VignetteBottomFraction,
                             end = 1f,
                             maxAlpha = VignetteMaxAlpha,
@@ -291,7 +313,7 @@ fun HeroBanner(
                 .background(
                     Brush.horizontalGradient(
                         colorStops = featheredEdgeStops(
-                            color = backgroundColor,
+                            color = MaterialTheme.ambientPanelTint(),
                             start = 0f,
                             end = VignetteLeftFraction,
                             reversed = true,
@@ -348,7 +370,7 @@ fun HeroBanner(
                     .align(Alignment.BottomStart)
                     .padding(
                         start = ScreenSafeAreaHorizontal,
-                        bottom = TopShelfTrayHeight + 16.dp,
+                        bottom = trayClearance + 16.dp,
                     ),
             )
         }

@@ -14,6 +14,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.unit.Dp
 import com.peartv.launcher.domain.model.TvApp
 
 /**
@@ -88,9 +89,19 @@ fun AppGrid(
     columnCount: Int = 0,
     upFocusRequesters: List<FocusRequester> = emptyList(),
     rowZeroFocusRequesters: List<FocusRequester> = emptyList(),
+    // Defaults to the shared tray/grid constant (Dimens.kt's own doc on
+    // why tray and grid tiles normally match), but `LauncherScreen` passes
+    // a larger, screen-height-derived size for its own collapsed layout —
+    // user-directed: the dock (its own row) plus exactly 3 grid rows
+    // should fill the screen, standard [TileSpacing] between them — grown
+    // instead of the tray's fixed size once the two were no longer
+    // interleaved on screen together (the tray sits well above the grid
+    // now, not sharing a row with it), so there was no longer a strong
+    // reason to keep grid tiles pinned to the tray's own smaller size.
+    tileWidth: Dp = TileWidth,
 ) {
     LazyVerticalGrid(
-        columns = GridCells.FixedSize(TileWidth),
+        columns = GridCells.FixedSize(tileWidth),
         modifier = modifier,
         horizontalArrangement = Arrangement.spacedBy(TileSpacing, Alignment.CenterHorizontally),
         verticalArrangement = Arrangement.spacedBy(TileSpacing),
@@ -106,7 +117,7 @@ fun AppGrid(
             val isRowZero = index < columnCount
             val upTarget = if (isRowZero) upFocusRequesters.getOrNull(index.coerceAtMost(upFocusRequesters.size - 1)) else null
             val ownFocusRequester = if (isRowZero) rowZeroFocusRequesters.getOrNull(index) else null
-            val tileModifier = Modifier.width(TileWidth).aspectRatio(TileAspectRatio)
+            val tileModifier = Modifier.width(tileWidth).aspectRatio(TileAspectRatio)
                 .let { base -> if (ownFocusRequester != null) base.focusRequester(ownFocusRequester) else base }
                 .let { base -> if (upTarget != null) base.focusProperties { up = upTarget } else base }
             val longPress: (() -> Unit)? = if (!editMode.isActive) onOpenOptionsMenu else null

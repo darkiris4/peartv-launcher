@@ -6,6 +6,8 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -19,6 +21,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.layer.GraphicsLayer
@@ -31,6 +34,7 @@ import com.peartv.launcher.domain.usecase.GetInstalledAppsUseCase
 import com.peartv.launcher.domain.usecase.LaunchAppUseCase
 import com.peartv.launcher.domain.usecase.LaunchContentUseCase
 import com.peartv.launcher.domain.usecase.RequestUninstallUseCase
+import com.peartv.launcher.ui.launcher.HeroExpansionMillis
 import com.peartv.launcher.ui.launcher.LauncherScreen
 import com.peartv.launcher.ui.launcher.LauncherViewModel
 import com.peartv.launcher.ui.launcher.LauncherViewModelFactory
@@ -153,6 +157,25 @@ private fun PearTvLauncherApp(
                 // reason `heroBackdropLayer` is — `StatusBar` and the launcher
                 // content are siblings, not parent/child.
                 val settingsFocusRequester = remember { FocusRequester() }
+                // User-directed: the status pill (clock + settings gear)
+                // should collapse away with the hero too, not sit as a
+                // permanently-static overlay regardless of hero state.
+                // Re-derives the same `isTopShelfFocused`/`expansionProgress`
+                // signal `LauncherScreen` computes for the hero itself
+                // (`focusedItemId` in `dockItems`) rather than threading a
+                // callback out of it — `StatusBar` and the launcher content
+                // are siblings here, same reason `heroBackdropLayer`/
+                // `settingsFocusRequester` above are already hoisted to this
+                // shared ancestor instead of owned by either child.
+                val focusedItemId by launcherViewModel.focusedItemId.collectAsStateWithLifecycle()
+                val dockItems by launcherViewModel.dockItems.collectAsStateWithLifecycle()
+                val dockPackageNames = remember(dockItems) { dockItems.map { it.id }.toSet() }
+                val isTopShelfFocused = focusedItemId == null || focusedItemId in dockPackageNames
+                val statusBarAlpha by animateFloatAsState(
+                    targetValue = if (isTopShelfFocused) 1f else 0f,
+                    animationSpec = tween(HeroExpansionMillis),
+                    label = "statusBarCollapse",
+                )
                 Box(modifier = Modifier.fillMaxSize()) {
                     LauncherRoute(
                         viewModel = launcherViewModel,
@@ -167,7 +190,8 @@ private fun PearTvLauncherApp(
                         settingsFocusRequester = settingsFocusRequester,
                         modifier = Modifier
                             .align(Alignment.TopEnd)
-                            .padding(24.dp),
+                            .padding(24.dp)
+                            .alpha(statusBarAlpha),
                     )
                 }
             }

@@ -26,22 +26,30 @@ import androidx.compose.ui.graphics.layer.GraphicsLayer
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInParent
+import androidx.compose.ui.unit.Dp
 import androidx.tv.material3.MaterialTheme
 import com.peartv.launcher.domain.model.TvApp
+import com.peartv.launcher.ui.theme.ambientPanelTint
 
 /**
- * PRODUCT_SPEC.md §3.1's top-shelf tray — column-aligned with the grid below
- * it (Decisions Log: "Glass tray width/alignment" — an earlier version
- * shrank to a content-sized "snug" panel for a handful of tiles; that's
- * gone, this always spans the grid's own content width so tile columns line
- * up between the tray and every row beneath it), inset from the screen edge
- * by [TrayOuterMargin] so it reads as a floating card, not a full-bleed bar
+ * PRODUCT_SPEC.md §3.1's top-shelf tray, inset from the screen edge by
+ * [TrayOuterMargin] so it reads as a floating card, not a full-bleed bar
  * (Decisions Log: "Glass tray outer margin"). Tiles here carry no per-tile
  * focus label (Decisions Log: "Tray tile focus label") — the tray's own
  * scale/glow motion already reads as "focused" without one.
  *
- * Translucent `colorScheme.surface` panel over a blurred crop of whatever's
- * behind it (`HeroBanner`'s own backdrop, via [blurSource]/`BackdropBlur.kt`)
+ * No longer column-aligned with the grid below it (superseding Decisions
+ * Log: "Glass tray width/alignment") — user-directed: this row's own
+ * internal padding is symmetric now (the same [TrayPaddingVertical] on
+ * every side, not [ScreenSafeAreaHorizontal] left/right and a much smaller
+ * [TrayPaddingVertical] top/bottom), which the grid's own contentPadding
+ * doesn't match — a deliberate trade, not an oversight.
+ *
+ * Translucent panel (`MaterialTheme.ambientPanelTint()` — `colorScheme.surface`
+ * lifted a touch toward `onSurfaceVariant`, `ui/theme/AmbientBackground.kt`,
+ * so this panel doesn't read as an unlit island against `ambientBackground`'s
+ * own glow behind it) over a blurred crop of whatever's behind it
+ * (`HeroBanner`'s own backdrop, via [blurSource]/`BackdropBlur.kt`)
  * — the earlier "liquid glass" treatment (translucent tint, hairline border,
  * drop shadow, and a real API-31+ backdrop blur) was removed per the
  * Decisions Log's "§3.1.1 'liquid glass' tray/pill styling — removed" entry,
@@ -101,6 +109,12 @@ fun TopShelfRow(
     optionsMenuTargetId: String? = null,
     onOpenOptionsMenu: () -> Unit = {},
     onTilePositioned: (LayoutCoordinates) -> Unit = {},
+    // Defaults to the shared constant, but `LauncherScreen` passes its own
+    // screen-height-derived size — user-directed: dock and grid tiles
+    // should always match exactly, including when the grid's own size
+    // grows past [TileWidth] for its collapsed layout (`AppGrid`'s own
+    // `tileWidth` doc).
+    tileWidth: Dp = TileWidth,
 ) {
     val shape = RoundedCornerShape(TrayCornerRadius)
     // This tray's own position relative to the shared hero `Box` it and
@@ -122,9 +136,13 @@ fun TopShelfRow(
                 lowResLayer = trayBlurLayer,
                 sourceOffset = { offsetInHero },
             )
-            .background(MaterialTheme.colorScheme.surface.copy(alpha = TranslucentPanelAlpha))
+            .background(MaterialTheme.ambientPanelTint().copy(alpha = TranslucentPanelAlpha))
             .horizontalScroll(rememberScrollState())
-            .padding(horizontal = ScreenSafeAreaHorizontal, vertical = TrayPaddingVertical),
+            // User-directed: the same padding on every side — was
+            // [ScreenSafeAreaHorizontal] (48dp) left/right vs
+            // [TrayPaddingVertical] (16dp) top/bottom, a 3x mismatch that
+            // read as far more empty margin on the sides than above/below.
+            .padding(horizontal = TrayPaddingVertical, vertical = TrayPaddingVertical),
         horizontalArrangement = Arrangement.spacedBy(TileSpacing),
     ) {
         apps.forEachIndexed { index, app ->
@@ -146,13 +164,14 @@ fun TopShelfRow(
                 onPositioned = if (isOptionsMenuTarget) onTilePositioned else ({}),
                 // 1.08x, not the grid's 1.15x default (PRODUCT_SPEC.md
                 // §1.1) — a deliberate re-differentiation, not tied to
-                // tile size (both rows use the same TileWidth).
+                // tile size (dock and grid tiles always match exactly —
+                // this composable's own `tileWidth` param doc).
                 focusedScale = 1.08f,
                 showFocusLabel = false,
-                // Same width/aspect as AppGrid's tiles — see Dimens.kt's
-                // TileWidth doc for why these must stay identical.
+                // Same width/aspect as AppGrid's tiles — must stay
+                // identical (this composable's own `tileWidth` param doc).
                 modifier = Modifier
-                    .width(TileWidth)
+                    .width(tileWidth)
                     .aspectRatio(TileAspectRatio)
                     .then(
                         if (ownFocusRequester != null) Modifier.focusRequester(ownFocusRequester) else Modifier,

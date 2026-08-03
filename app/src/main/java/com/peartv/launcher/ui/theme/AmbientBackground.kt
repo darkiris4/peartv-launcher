@@ -6,6 +6,7 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.lerp
 import androidx.tv.material3.MaterialTheme
 
 /**
@@ -16,12 +17,24 @@ import androidx.tv.material3.MaterialTheme
  * would consciously notice. This reproduces that with one radial gradient
  * layered over the flat fill, not a replacement for it.
  *
- * Deliberately theme-token-only, no new raw color: the tint is
- * `colorScheme.surface`, which this app's palette already keeps a step
- * *lighter* than `colorScheme.background` in both schemes (the same
- * elevation relationship every card/panel in this app relies on — see
- * `Theme.kt`) — so a low-alpha wash of it over `background` reads as gentle
- * ambient lift, not a color shift, and needs no separate light/dark case.
+ * Two things confirmed wrong on-device in the first pass, both fixed here:
+ *
+ * 1. **Tint color**: `colorScheme.surface` is *deliberately* only a hair
+ *    lighter than `colorScheme.background` (the "subtle elevated surface"
+ *    principle this app's whole dark palette is built on) — which meant even
+ *    this gradient's brightest point never got far past black, invisible on
+ *    a real TV panel's own black-crush well before a screenshot's pixel
+ *    values would suggest. `colorScheme.onSurfaceVariant` (the secondary-text
+ *    gray) has real, visible luminance instead of being background-adjacent
+ *    by design, so it actually reads as a lift.
+ * 2. **Radius**: sized off `size.width`, which on a landscape TV (width ≫
+ *    height) meant the falloff barely completed within the screen's own
+ *    height — the gradient was nearly uniform top-to-bottom instead of
+ *    visibly fading, flattening whatever contrast the tint did have. Sized
+ *    off `size.height` instead, so the fade actually completes within the
+ *    visible frame.
+ *
+ * Deliberately theme-token-only, no raw color either way.
  *
  * Not used by `HeroBanner`/`ContentCarousel`/`PortraitPosterBackdrop`,
  * whose own backdrop art, Ken Burns motion, and vignettes are a genuinely
@@ -35,19 +48,51 @@ import androidx.tv.material3.MaterialTheme
 @Composable
 fun Modifier.ambientBackground(): Modifier {
     val background = MaterialTheme.colorScheme.background
-    val ambientTint = MaterialTheme.colorScheme.surface
+    val ambientTint = MaterialTheme.colorScheme.onSurfaceVariant
     return this.drawBehind {
         drawRect(background)
         drawRect(
             Brush.radialGradient(
                 colors = listOf(ambientTint.copy(alpha = AmbientGlowAlpha), Color.Transparent),
                 center = Offset(size.width / 2f, 0f),
-                radius = size.width * AmbientGlowRadiusFraction,
+                radius = size.height * AmbientGlowRadiusFraction,
             ),
         )
     }
 }
 
-/** Low enough to read as "lit," not "colored" — see this file's own doc for why no separate light/dark tuning was needed here. */
-private const val AmbientGlowAlpha = 0.16f
-private const val AmbientGlowRadiusFraction = 0.9f
+/**
+ * Visibly "lit" without reading as a colored panel — see this file's own doc
+ * for the on-device tuning that landed here. Confirmed on the actual
+ * reference Shield TV Pro that 0.35 (already ~21% gray at the gradient's own
+ * peak, clearly visible in an `adb screencap` pixel-for-pixel) still read as
+ * *zero* visible effect on the physical display — almost certainly the TV's
+ * own black-level/contrast processing crushing it, not a rendering bug (the
+ * install was confirmed current, not stale). Pushed well past what a
+ * screenshot alone would suggest is needed, specifically to survive that.
+ */
+private const val AmbientGlowAlpha = 0.65f
+private const val AmbientGlowRadiusFraction = 1.8f
+
+/**
+ * The top-shelf tray and status pill (`TopShelfRow`/`StatusBar`, which
+ * already deliberately share one panel tone — Dimens.kt's own
+ * `TranslucentPanelAlpha` doc: "so both panels read as one consistent glass
+ * material") sit at `TranslucentPanelAlpha` (0.9, nearly opaque) over
+ * [ambientBackground]. That's opaque enough that the panel reads as almost
+ * pure flat `colorScheme.surface` regardless of what's behind it — which,
+ * once the background it sits on actually got bright enough to be visible
+ * (this file's own tuning history above), created a hard seam confirmed
+ * on-device: the tray's own bottom edge against the now-lit background
+ * behind it, sharp enough to read as "a black line." Blending a touch of the
+ * same [ambientBackground] tint into the panel's own base color — not a full
+ * gradient, a single flat lift, appropriate for a small bounded card rather
+ * than the whole screen — keeps the panel reading as its own elevated
+ * surface while no longer looking like an unlit island dropped onto a lit
+ * background.
+ */
+@Composable
+fun MaterialTheme.ambientPanelTint(): Color =
+    lerp(colorScheme.surface, colorScheme.onSurfaceVariant, AmbientPanelLiftFraction)
+
+private const val AmbientPanelLiftFraction = 0.18f

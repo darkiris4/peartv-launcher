@@ -46,6 +46,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.common.MediaItem
@@ -62,6 +63,7 @@ import com.peartv.launcher.domain.model.ChannelProgram
 import com.peartv.launcher.ui.focus.FocusGainMillis
 import com.peartv.launcher.ui.focus.FocusLossMillis
 import com.peartv.launcher.ui.motion.kenBurns
+import com.peartv.launcher.ui.theme.ambientPanelTint
 import kotlinx.coroutines.delay
 
 /** How long a poster holds before either playing its trailer (if published) or advancing — user-directed, raised from the original 5s. */
@@ -146,6 +148,10 @@ fun ContentCarousel(
     focusRequester: FocusRequester,
     upFocusRequester: FocusRequester,
     modifier: Modifier = Modifier,
+    // See HeroBanner's identical parameter for why this isn't just
+    // `TopShelfTrayHeight` anymore — the tray no longer sits a fixed
+    // distance above this carousel's own bottom edge.
+    trayClearance: Dp = TopShelfTrayHeight,
 ) {
     if (channel.programs.isEmpty()) return
 
@@ -268,13 +274,19 @@ fun ContentCarousel(
         // describes, just never caught here independently since this
         // carousel is usually covered in real photographic art busy enough
         // to mask it, unlike Tier 2's flat sampled-color fill.
+        //
+        // Fades to `MaterialTheme.ambientPanelTint()`, not flat
+        // `backgroundColor` — same fix as HeroBanner.kt's identical vignette,
+        // see that file's own doc: fading to a flat color created a new hard
+        // seam against `ambientBackground`'s glow in the chrome behind this
+        // carousel once that existed.
         Box(
             modifier = Modifier
                 .fillMaxSize()
                 .background(
                     Brush.verticalGradient(
                         colorStops = featheredEdgeStops(
-                            color = backgroundColor,
+                            color = MaterialTheme.ambientPanelTint(),
                             start = 1f - VignetteBottomFraction,
                             end = 1f,
                         ),
@@ -287,7 +299,7 @@ fun ContentCarousel(
                 .background(
                     Brush.horizontalGradient(
                         colorStops = featheredEdgeStops(
-                            color = backgroundColor,
+                            color = MaterialTheme.ambientPanelTint(),
                             start = 0f,
                             end = VignetteLeftFraction,
                             reversed = true,
@@ -323,7 +335,7 @@ fun ContentCarousel(
                 .padding(
                     start = ScreenSafeAreaHorizontal,
                     end = ScreenSafeAreaHorizontal,
-                    bottom = TopShelfTrayHeight + 16.dp,
+                    bottom = trayClearance + 16.dp,
                 ),
         )
     }

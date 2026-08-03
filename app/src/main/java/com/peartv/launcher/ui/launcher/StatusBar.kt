@@ -27,6 +27,7 @@ import androidx.tv.material3.Icon
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.OutlinedIconButton
 import androidx.tv.material3.Text
+import com.peartv.launcher.ui.theme.ambientPanelTint
 import kotlinx.coroutines.delay
 import java.time.LocalTime
 import java.time.format.DateTimeFormatter
@@ -96,7 +97,7 @@ fun StatusBar(
                 lowResLayer = pillBlurLayer,
                 sourceOffset = { windowPosition - blurSourceWindowPosition() },
             )
-            .background(MaterialTheme.colorScheme.surface.copy(alpha = TranslucentPanelAlpha))
+            .background(MaterialTheme.ambientPanelTint().copy(alpha = TranslucentPanelAlpha))
             .padding(start = 20.dp, end = 8.dp, top = 4.dp, bottom = 4.dp),
         horizontalArrangement = Arrangement.spacedBy(StatusBarContentSpacing),
         verticalAlignment = Alignment.CenterVertically,
