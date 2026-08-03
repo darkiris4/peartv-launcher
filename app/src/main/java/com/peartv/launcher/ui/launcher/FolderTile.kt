@@ -45,9 +45,8 @@ import androidx.compose.ui.unit.dp
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import com.peartv.launcher.domain.model.TvApp
-import com.peartv.launcher.ui.focus.FocusGainMillis
-import com.peartv.launcher.ui.focus.FocusLossMillis
 import com.peartv.launcher.ui.focus.tvOSFocusable
+import com.peartv.launcher.ui.motion.TvSprings
 
 /**
  * Grid Reordering & Folders §5 "Closed State (Grid View Tile)" — a frosted-
@@ -77,9 +76,13 @@ fun FolderTile(
     onPositioned: (LayoutCoordinates) -> Unit = {},
 ) {
     var isFocused by remember { mutableStateOf(false) }
+    // See `AppTile`'s own doc on this same spring choice — the label fade
+    // reuses the tile's own lift spring (TvSprings.ElevationFocusGain/Loss)
+    // instead of a duration-matched tween, so it tracks the exact curve the
+    // parallax/lift animation moves on.
     val labelAlpha by animateFloatAsState(
         targetValue = if (isFocused) 1f else 0f,
-        animationSpec = tween(if (isFocused) FocusGainMillis else FocusLossMillis),
+        animationSpec = if (isFocused) TvSprings.ElevationFocusGain else TvSprings.ElevationFocusLoss,
         label = "folderTileFocusLabelAlpha",
     )
 

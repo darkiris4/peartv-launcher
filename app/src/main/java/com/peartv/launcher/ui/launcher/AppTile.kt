@@ -45,9 +45,8 @@ import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import com.peartv.launcher.R
 import com.peartv.launcher.domain.model.TvApp
-import com.peartv.launcher.ui.focus.FocusGainMillis
-import com.peartv.launcher.ui.focus.FocusLossMillis
 import com.peartv.launcher.ui.focus.tvOSFocusable
+import com.peartv.launcher.ui.motion.TvSprings
 import kotlinx.coroutines.launch
 
 /** User-supplied tile art override (`design/settings-{light,dark}.png`) replaces the real Android TV Settings app's own icon/banner — see the `packageName` check below. Not `private`: [HeroBanner]'s Tier 2 fallback needs the same override for its own backdrop (same package, no import needed — same file package). */
@@ -122,12 +121,16 @@ fun AppTile(
     val glowColor = MaterialTheme.colorScheme.onBackground
 
     var isFocused by remember { mutableStateOf(false) }
-    // Same FocusGainMillis/FocusLossMillis tween budget as tvOSFocusable's
-    // own label fade (§1.4: "reuses existing focus-transition timing rather
-    // than introducing new constants").
+    // Real tvOS Top Shelf behavior (user-supplied): "The label fades in and
+    // out as focus arrives and leaves ... coordinated with the
+    // parallax/lift animation on the tile itself" — reusing
+    // TvSprings.ElevationFocusGain/Loss (the tile's own shadow/lift spring,
+    // `tvOSFocusable`'s own doc) instead of a plain duration-matched tween
+    // makes the label track the *exact* curve the lift moves on, not just
+    // settle in the same rough window.
     val labelAlpha by animateFloatAsState(
         targetValue = if (isFocused) 1f else 0f,
-        animationSpec = tween(if (isFocused) FocusGainMillis else FocusLossMillis),
+        animationSpec = if (isFocused) TvSprings.ElevationFocusGain else TvSprings.ElevationFocusLoss,
         label = "tileFocusLabelAlpha",
     )
 

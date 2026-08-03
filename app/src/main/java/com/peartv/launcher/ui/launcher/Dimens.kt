@@ -48,7 +48,10 @@ val TileSpacing = 24.dp
  * neighboring row/tile reflowing on each focus change, which a
  * conditionally-present label would cause.
  */
-val FocusLabelSpacing = 4.dp
+// User-directed: more breathing room between the tile and its label than
+// the original 4.dp — bumped to 8.dp, then to 12.dp after that still read
+// too tight against the tile's own bottom edge (on-device, Shield).
+val FocusLabelSpacing = 12.dp
 val FocusLabelHeight = 20.dp
 
 /** Tile + its reserved label space — the actual per-item height grid rows need to account for (§1.4). Tray tiles don't reserve this — see `TopShelfTrayHeight`. */
