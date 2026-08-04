@@ -382,14 +382,30 @@ private val SettingsIconPanelSize = 280.dp
 private val SettingsIconPanelCornerRadius = 32.dp
 
 /**
- * Fixed distance from the top of the icon column's own box to the icon's
- * top edge (user-directed bug fix — see this constant's own call site for
- * the full story: the icon must never move, and is deliberately anchored
- * near the top rather than centered in the full row height, to reserve
- * screen room below it for descriptions without ever touching the icon's
- * own position).
+ * Fixed distance from the top of the content area (same y the row list
+ * itself starts from) to the icon panel's own top edge — 0dp, i.e. flush
+ * with the row list's own top.
+ *
+ * User-directed re-tune: was 24dp, chosen to roughly match the top-margin
+ * proportion measured directly off the real tvOS reference
+ * (`design/settings-menu.png`: icon top sits ~8.8% of the icon's own
+ * height below the list's top there). But on-device pixel measurement of
+ * this app's own root page (5 rows) showed the icon's vertical center
+ * still sitting ~85dp below the row list's own center at that value — this
+ * app's per-page lists are much shorter (4-5 rows, ~130-160dp tall) than
+ * the reference's own (10+ rows, scrolling well past the visible frame),
+ * so matching the reference's relative top-margin doesn't read the same
+ * way here. 0dp is the closest a top-offset alone can get the icon's
+ * center toward a typical short list's center without either overlapping
+ * the page title above (it doesn't: `SettingsTitleSpacing`, 40dp, is a
+ * separate, already-reserved gap under the title, untouched by this
+ * value) or shrinking the icon panel itself — even at 0dp a real,
+ * measured ~60dp gap remains, since the 280dp icon is simply taller than
+ * a 4-5 row list occupies. Closing that residual gap further would need
+ * `SettingsIconPanelSize` itself reduced, a bigger visual change than
+ * this constant alone can make — left alone pending explicit direction.
  */
-private val SettingsIconTopOffset = 24.dp
+private val SettingsIconTopOffset = 0.dp
 
 /**
  * Pill column width, as a fraction of the true screen width — user-directed,
