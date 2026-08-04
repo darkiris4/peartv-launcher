@@ -11,6 +11,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -50,6 +51,35 @@ import com.peartv.launcher.ui.theme.settingsRowFill
  */
 val LocalFocusedSettingsDescription = staticCompositionLocalOf<(String?) -> Unit> {
     error("LocalFocusedSettingsDescription not provided — read only from within SettingsScreen")
+}
+
+/**
+ * Whether the current page is still inside its own
+ * [SettingsInitialFocusGraceMillis] window — read by every row via
+ * [SettingsRowShell] so *all* of them, not just whichever one carries
+ * [settingsInitialFocus], stay genuinely unfocusable
+ * (`focusProperties { canFocus = ... }`) until that window closes.
+ *
+ * Root-caused a confirmed-user-reported bug: [settingsInitialFocus] only
+ * gated its own single target — real Android focus, finding that target
+ * unfocusable, fell back to the *next* focusable node in the page (the
+ * second row) instead, which visibly claimed focus (and, for a row with its
+ * own [description], the focused-description text below the icon panel)
+ * for the length of the grace window before the intended first row's own
+ * `requestFocus()` call finally landed and corrected it — a real, briefly
+ * wrong-then-right flash of both the row highlight and its description
+ * text, not merely an animation artifact. Gating every row in lockstep
+ * closes off that fallback entirely: there's nothing else for real focus to
+ * land on until the grace window ends and the intended target claims it
+ * explicitly.
+ *
+ * A plain `State<Boolean>` (not a setter function like
+ * [LocalFocusedSettingsDescription]) — every row only ever *reads* this,
+ * never writes it; `SettingsScreen` owns the single per-route timer that
+ * flips it.
+ */
+val LocalSettingsInitialFocusGraceActive = staticCompositionLocalOf<State<Boolean>> {
+    error("LocalSettingsInitialFocusGraceActive not provided — read only from within SettingsScreen")
 }
 
 /**
@@ -103,6 +133,7 @@ private fun SettingsRowShell(
     )
     val contentColor = if (isFocused) MaterialTheme.colorScheme.surface else MaterialTheme.colorScheme.onSurface
     val setFocusedDescription = LocalFocusedSettingsDescription.current
+    val initialFocusGraceActive = LocalSettingsInitialFocusGraceActive.current.value
 
     Row(
         verticalAlignment = Alignment.CenterVertically,
@@ -110,6 +141,12 @@ private fun SettingsRowShell(
             .fillMaxWidth()
             .clip(RoundedCornerShape(SettingsRowCornerRadius))
             .background(backgroundColor)
+            // See [LocalSettingsInitialFocusGraceActive]'s own doc — every
+            // row, not just whichever one carries [settingsInitialFocus],
+            // stays unfocusable until the page's own grace window closes,
+            // so real focus has nothing else to fall back to in the
+            // meantime.
+            .focusProperties { canFocus = !initialFocusGraceActive }
             .tvOSFocusable(
                 focusedScale = 1f,
                 cornerRadius = SettingsRowCornerRadius,

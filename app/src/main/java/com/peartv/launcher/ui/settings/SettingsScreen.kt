@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -43,6 +44,7 @@ import com.peartv.launcher.R
 import com.peartv.launcher.domain.repository.ThemeMode
 import com.peartv.launcher.ui.focus.FocusGainMillis
 import com.peartv.launcher.ui.focus.FocusLossMillis
+import kotlinx.coroutines.delay
 
 /**
  * PRODUCT_SPEC.md §4's settings surface — expanded (an explicit new ask, not
@@ -185,7 +187,20 @@ fun SettingsScreen(
                     // once alpha reaches 0, since invisible content showing
                     // stale text behind it is indistinguishable from no text
                     // at all.
-                    var lastDescription by remember { mutableStateOf("") }
+                    //
+                    // Keyed on [route] — confirmed user-reported: without
+                    // this, this state survives route changes (it isn't
+                    // reset the way [focusedDescription] itself is), so it
+                    // kept showing the *previous* page's description text,
+                    // mid-fade, after navigating into a new one. That stale
+                    // text stayed on screen for the full
+                    // `SettingsInitialFocusGraceMillis` window
+                    // (`settingsInitialFocus`'s own doc) — the new page's
+                    // first row is deliberately unfocusable until that grace
+                    // period elapses, so nothing corrects `focusedDescription`
+                    // until then. Resetting this in lockstep with
+                    // [focusedDescription] closes that window entirely.
+                    var lastDescription by remember(route) { mutableStateOf("") }
                     if (description != null) lastDescription = description
                     val descriptionAlpha by animateFloatAsState(
                         targetValue = if (description != null) 1f else 0f,
@@ -275,10 +290,29 @@ fun SettingsScreen(
                         // moves on, this branch's writes silently no-op
                         // instead of landing on the (still shared, currently
                         // displayed) state.
+                        // Confirmed user-reported, and the actual root cause
+                        // of the description flash above [lastDescription]'s
+                        // own doc was addressing only half of: real focus,
+                        // finding [settingsInitialFocus]'s own gated target
+                        // unfocusable, fell back to the page's *second* row
+                        // instead — which briefly took real focus (and, if
+                        // it carries its own description, briefly showed
+                        // that instead) until the intended first row's
+                        // delayed `requestFocus()` corrected it. Keyed on
+                        // [targetRoute] for the same reason [focusedDescription]
+                        // itself is — a fresh timer starting in the same
+                        // composition pass a new route's branch first
+                        // appears, not shared across routes.
+                        val initialFocusGraceActive = remember(targetRoute) { mutableStateOf(true) }
+                        LaunchedEffect(targetRoute) {
+                            delay(SettingsInitialFocusGraceMillis)
+                            initialFocusGraceActive.value = false
+                        }
                         CompositionLocalProvider(
                             LocalFocusedSettingsDescription provides { description ->
                                 if (targetRoute == route) focusedDescription.value = description
                             },
+                            LocalSettingsInitialFocusGraceActive provides initialFocusGraceActive,
                         ) {
                             when (targetRoute) {
                                 SettingsRoute.Root -> SettingsRootContent(onNavigate = onNavigate)

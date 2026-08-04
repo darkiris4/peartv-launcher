@@ -144,4 +144,4 @@ fun Modifier.settingsInitialFocus(requester: FocusRequester): Modifier {
         .focusProperties { canFocus = isInitialFocusEnabled }
 }
 
-private const val SettingsInitialFocusGraceMillis = 350L
+internal const val SettingsInitialFocusGraceMillis = 350L
