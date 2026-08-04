@@ -6,6 +6,7 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.lerp
 import androidx.tv.material3.MaterialTheme
 
@@ -51,13 +52,26 @@ import androidx.tv.material3.MaterialTheme
  * from. Applying this *underneath* those surfaces, not instead of them,
  * keeps that separation: callers still composite hero/carousel content on
  * top of this, same as they did over the old flat fill.
+ *
+ * [backdrop], when non-null, entirely replaces the [baseColor] flat fill as
+ * the *base* layer — `SettingsPageScaffold`'s own Liquid-Glass-style
+ * backdrop (a cached blurred carousel poster, `MainActivity`'s own
+ * `cachedSettingsBackdrop`, since Settings has no live hero to source a
+ * blur from itself). [baseColor] still matters even when [backdrop] is
+ * usually non-null: the caller's own null-artwork fallback path passes
+ * `backdrop = null` and relies on this flat fill same as before. The radial
+ * glow drawn after it is untouched either way — user-directed: only the
+ * flat base underneath gets replaced, not the whole stack.
  */
 @Composable
-fun Modifier.ambientBackground(baseColor: Color = MaterialTheme.colorScheme.background): Modifier {
+fun Modifier.ambientBackground(
+    baseColor: Color = MaterialTheme.colorScheme.background,
+    backdrop: (DrawScope.() -> Unit)? = null,
+): Modifier {
     val background = baseColor
     val ambientTint = MaterialTheme.colorScheme.onSurfaceVariant
     return this.drawBehind {
-        drawRect(background)
+        if (backdrop != null) backdrop() else drawRect(background)
         drawRect(
             Brush.radialGradient(
                 colors = listOf(ambientTint.copy(alpha = AmbientGlowAlpha), Color.Transparent),

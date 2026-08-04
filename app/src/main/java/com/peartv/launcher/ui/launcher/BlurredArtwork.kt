@@ -9,6 +9,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.LocalContext
@@ -112,6 +113,26 @@ private fun averageColor(bitmap: Bitmap): Color {
     }
     val n = pixels.size
     return Color(r / n / 255f, g / n / 255f, b / n / 255f, 1f)
+}
+
+/**
+ * A second [Toolkit.blur] pass over an already-blurred [BlurredArtwork]'s
+ * own (already small) bitmap — `SettingsPageScaffold`'s own static backdrop
+ * wants to read as more heavily "frosted" than the dock's own lighter,
+ * Ken-Burns-animated blur (user-directed: the dock's own [BlurRadius] is
+ * tuned to keep tile focus/text legible through *moving* art, a lower bar
+ * than a still backdrop needs). Re-blurring the already-downscaled cached
+ * bitmap is far cheaper than re-decoding and re-blurring the original
+ * artwork from scratch for a second, independently-tuned copy — and this
+ * project has no network fetch to redo either way, unlike
+ * [rememberBlurredArtwork]'s own first pass. [averageColor]/[luminance] are
+ * recomputed from the newly-reblurred bitmap rather than copied from the
+ * source, though in practice a second blur pass barely shifts either.
+ */
+suspend fun BlurredArtwork.reblurred(radius: Int): BlurredArtwork = withContext(Dispatchers.Default) {
+    val heavier = Toolkit.blur(bitmap.asAndroidBitmap(), radius)
+    val heavierAverageColor = averageColor(heavier)
+    BlurredArtwork(heavier.asImageBitmap(), heavierAverageColor, heavierAverageColor.luminance())
 }
 
 /**

@@ -44,6 +44,7 @@ import com.peartv.launcher.R
 import com.peartv.launcher.domain.repository.ThemeMode
 import com.peartv.launcher.ui.focus.FocusGainMillis
 import com.peartv.launcher.ui.focus.FocusLossMillis
+import com.peartv.launcher.ui.launcher.BlurredArtwork
 import kotlinx.coroutines.delay
 
 /**
@@ -89,6 +90,7 @@ fun SettingsScreen(
     route: SettingsRoute,
     themeMode: ThemeMode,
     tmdbApiKey: String?,
+    cachedBackdrop: BlurredArtwork?,
     onThemeModeChange: (ThemeMode) -> Unit,
     onTmdbApiKeySave: (String) -> Unit,
     onResetSettings: () -> Unit,
@@ -120,7 +122,7 @@ fun SettingsScreen(
     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
         val screenWidth = maxWidth
 
-        SettingsPageScaffold(title = route.title, modifier = modifier) {
+        SettingsPageScaffold(title = route.title, cachedBackdrop = cachedBackdrop, modifier = modifier) {
             // `weight(1f)` (ColumnScope, from SettingsPageScaffold's own
             // Column) — this Row must actually fill the remaining page
             // height so the icon column below has real vertical room to

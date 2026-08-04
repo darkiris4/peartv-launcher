@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
@@ -33,12 +34,14 @@ import com.peartv.launcher.domain.usecase.GetInstalledAppsUseCase
 import com.peartv.launcher.domain.usecase.LaunchAppUseCase
 import com.peartv.launcher.domain.usecase.LaunchContentUseCase
 import com.peartv.launcher.domain.usecase.RequestUninstallUseCase
+import com.peartv.launcher.ui.launcher.BlurredArtwork
 import com.peartv.launcher.ui.launcher.DockBackdrop
 import com.peartv.launcher.ui.launcher.HeroExpansionMillis
 import com.peartv.launcher.ui.launcher.LauncherScreen
 import com.peartv.launcher.ui.launcher.LauncherViewModel
 import com.peartv.launcher.ui.launcher.LauncherViewModelFactory
 import com.peartv.launcher.ui.launcher.StatusBar
+import com.peartv.launcher.ui.launcher.reblurred
 import com.peartv.launcher.ui.motion.LocalReduceMotion
 import com.peartv.launcher.ui.motion.isReduceMotionEnabled
 import com.peartv.launcher.ui.settings.SettingsRoute
@@ -116,6 +119,18 @@ class MainActivity : ComponentActivity() {
 
 private enum class Screen { Launcher, Settings }
 
+/**
+ * Independently-tuned, and *heavier* than the dock's own `BlurRadius`
+ * (`BlurredArtwork.kt`) — user-directed: Settings' backdrop is a still image
+ * (no Ken Burns motion, no legibility floor from moving art), so it can (and
+ * should) read as more heavily "frosted" than the dock's own lighter blur.
+ * The toolkit's own max (`com.google.android.renderscript.Toolkit.blur`'s
+ * own doc: valid range 1..25) — see [BlurredArtwork.reblurred]'s own doc for
+ * why this is a cheap *second* pass over the dock's already-blurred bitmap,
+ * not a fresh decode+blur.
+ */
+private const val SettingsBackdropBlurRadius = 25
+
 @Composable
 private fun PearTvLauncherApp(
     launcherViewModel: LauncherViewModel,
@@ -132,6 +147,18 @@ private fun PearTvLauncherApp(
         ThemeMode.Automatic -> isSystemInDarkTheme()
     }
     var screen by remember { mutableStateOf(Screen.Launcher) }
+    // `SettingsPageScaffold`'s own Liquid-Glass-style backdrop — declared at
+    // this level, above the `when (screen)` swap below, specifically so it
+    // survives that swap. `dockBackdrop` (inside the `Screen.Launcher`
+    // branch) does not: a plain `when` only composes its matching branch,
+    // so Compose fully disposes `Screen.Launcher`'s whole subtree — and
+    // whatever state lived inside it — the instant `screen` flips to
+    // `Settings` (confirmed by investigation before this was added; there's
+    // no live hero/carousel composed underneath Settings to read a backdrop
+    // from at that point). Mirrored from `dockBackdrop`'s own artwork
+    // on every real change, last value wins — see the `Screen.Launcher`
+    // branch below for where that mirroring actually happens.
+    var cachedSettingsBackdrop by remember { mutableStateOf<BlurredArtwork?>(null) }
     // Read once at startup (LocalReduceMotion's own doc) — every focus
     // animation in ui/focus/TvFocusable.kt consults this to skip tilt
     // entirely and snap (not spring) scale/elevation when Android's
@@ -150,6 +177,27 @@ private fun PearTvLauncherApp(
                 // see `DockBackdrop`'s own doc (`BlurredArtwork.kt`). Hoisted
                 // to this shared ancestor rather than owned by either child.
                 var dockBackdrop by remember { mutableStateOf<DockBackdrop?>(null) }
+                // Mirrors every real artwork change into `cachedSettingsBackdrop`
+                // (hoisted above the `when (screen)` swap, this function's own
+                // doc on it) — last value wins, never cleared back to `null`
+                // here even while `dockBackdrop` itself currently has no
+                // artwork (Tier 1/2, or Tier 3 between poster loads):
+                // Settings should keep showing whatever the most recent real
+                // artwork was, not go back to a flat fill just because the
+                // dock momentarily has nothing of its own to show. Re-blurred
+                // a second time at [SettingsBackdropBlurRadius] — user-directed:
+                // Settings' own static backdrop should read as more heavily
+                // "frosted" than the dock's own lighter, motion-tuned blur —
+                // rather than caching the dock's own bitmap as-is (see
+                // `BlurredArtwork.reblurred`'s own doc for why re-blurring the
+                // already-small cached copy, not a fresh decode, is cheap
+                // enough to do here on every artwork change).
+                val currentDockArtwork = dockBackdrop?.artwork?.value
+                LaunchedEffect(currentDockArtwork) {
+                    currentDockArtwork?.let {
+                        cachedSettingsBackdrop = it.reblurred(SettingsBackdropBlurRadius)
+                    }
+                }
                 // The hero/carousel's own real window rect — `StatusBar`
                 // needs this as the reference frame [dockBackdrop]'s artwork
                 // was `ContentScale.Crop`'d across, to map its own on-screen
@@ -232,6 +280,7 @@ private fun PearTvLauncherApp(
                     route = settingsBackStack.last(),
                     themeMode = themeMode,
                     tmdbApiKey = tmdbApiKey,
+                    cachedBackdrop = cachedSettingsBackdrop,
                     onThemeModeChange = settingsViewModel::setThemeMode,
                     onTmdbApiKeySave = settingsViewModel::setTmdbApiKey,
                     onResetSettings = settingsViewModel::resetSettings,
