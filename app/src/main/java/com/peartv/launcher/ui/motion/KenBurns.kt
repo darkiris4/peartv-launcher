@@ -7,7 +7,10 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
 import androidx.compose.ui.graphics.graphicsLayer
@@ -54,11 +57,33 @@ private const val KenBurnsCycleMillis = 14000
  */
 @Composable
 fun Modifier.kenBurns(): Modifier = composed {
+    val progress by rememberKenBurnsProgress()
+    this.kenBurnsTransform(progress)
+}
+
+/**
+ * The bare 0..1 progress [kenBurns] drives its own [graphicsLayer] transform
+ * from — split out so a second draw target (`ContentCarousel`'s dock-backdrop
+ * blur, sourced from the same artwork as the sharp poster this progress
+ * already animates) can apply the *exact same instantaneous value* via
+ * [kenBurnsTransform] rather than running its own independent
+ * [rememberInfiniteTransition]. Two separate infinite transitions, even with
+ * identical parameters, don't start in phase with each other — confirmed
+ * user-reported requirement: they need to share one clock, not just one
+ * config, to actually stay in sync.
+ *
+ * Still respects [LocalReduceMotion] the same way [kenBurns] always has —
+ * pinned at `0f` (no motion) rather than skipping the transform entirely, so
+ * every caller can unconditionally apply [kenBurnsTransform] without its own
+ * reduce-motion branch.
+ */
+@Composable
+fun rememberKenBurnsProgress(): State<Float> {
     val reduceMotion = LocalReduceMotion.current
-    if (reduceMotion) return@composed this
+    if (reduceMotion) return remember { mutableFloatStateOf(0f) }
 
     val transition = rememberInfiniteTransition(label = "kenBurns")
-    val progress by transition.animateFloat(
+    return transition.animateFloat(
         initialValue = 0f,
         targetValue = 1f,
         animationSpec = infiniteRepeatable(
@@ -67,13 +92,14 @@ fun Modifier.kenBurns(): Modifier = composed {
         ),
         label = "kenBurnsProgress",
     )
+}
 
-    this.graphicsLayer {
-        val scale = 1f + (KenBurnsMaxScale - 1f) * progress
-        scaleX = scale
-        scaleY = scale
-        translationX = size.width * KenBurnsPanFraction * progress
-        translationY = size.height * KenBurnsPanFraction * 0.5f * progress
-        clip = true
-    }
+/** Applies [progress] (0..1, from [rememberKenBurnsProgress]) as the same scale+pan transform [kenBurns] itself uses. */
+fun Modifier.kenBurnsTransform(progress: Float): Modifier = this.graphicsLayer {
+    val scale = 1f + (KenBurnsMaxScale - 1f) * progress
+    scaleX = scale
+    scaleY = scale
+    translationX = size.width * KenBurnsPanFraction * progress
+    translationY = size.height * KenBurnsPanFraction * 0.5f * progress
+    clip = true
 }

@@ -62,7 +62,8 @@ import com.peartv.launcher.domain.model.AppChannel
 import com.peartv.launcher.domain.model.ChannelProgram
 import com.peartv.launcher.ui.focus.FocusGainMillis
 import com.peartv.launcher.ui.focus.FocusLossMillis
-import com.peartv.launcher.ui.motion.kenBurns
+import com.peartv.launcher.ui.motion.kenBurnsTransform
+import com.peartv.launcher.ui.motion.rememberKenBurnsProgress
 import com.peartv.launcher.ui.theme.ambientPanelTint
 import kotlinx.coroutines.delay
 
@@ -152,6 +153,13 @@ fun ContentCarousel(
     // `TopShelfTrayHeight` anymore — the tray no longer sits a fixed
     // distance above this carousel's own bottom edge.
     trayClearance: Dp = TopShelfTrayHeight,
+    // `TopShelfRow`'s own blurred backdrop feed (`DockBackdrop`,
+    // `BlurredArtwork.kt`) — a sibling in `LauncherScreen`, not a descendant,
+    // so it can't just read this composable's own local state; the currently-
+    // shown poster reports up through this callback instead. Defaults to a
+    // no-op so callers that don't care (none currently, but keeps this
+    // composable usable standalone) don't have to wire it.
+    onDockBackdropChanged: (DockBackdrop?) -> Unit = {},
 ) {
     if (channel.programs.isEmpty()) return
 
@@ -253,14 +261,27 @@ fun ContentCarousel(
             label = "carouselContent",
         ) { (crossfadeIndex, crossfadePhase) ->
             val crossfadeProgram = channel.programs.getOrNull(crossfadeIndex) ?: return@AnimatedContent
+            // Guard against the outgoing branch (still composed here, mid
+            // exit-slide during the transition above) overwriting the
+            // incoming branch's own write — same class of race, same fix,
+            // as `SettingsScreen`'s `LocalFocusedSettingsDescription` guard.
+            val guardedOnDockBackdropChanged: (DockBackdrop?) -> Unit = {
+                if (crossfadeIndex to crossfadePhase == index to phase) onDockBackdropChanged(it)
+            }
             when (crossfadePhase) {
-                CarouselPhase.Poster -> PosterBackdrop(crossfadeProgram, resolvedBackdrops[crossfadeIndex])
-                CarouselPhase.Trailer -> TrailerPlayer(
-                    uri = crossfadeProgram.previewVideoUri.orEmpty(),
-                    onEnded = { advance(1) },
-                    onError = { advance(1) },
-                    modifier = Modifier.fillMaxSize(),
-                )
+                CarouselPhase.Poster -> PosterBackdrop(crossfadeProgram, resolvedBackdrops[crossfadeIndex], guardedOnDockBackdropChanged)
+                CarouselPhase.Trailer -> {
+                    // No artwork concept while a trailer plays — falls back
+                    // to `TopShelfRow`'s own plain-translucency default
+                    // rather than leaving the last poster's blur stale.
+                    guardedOnDockBackdropChanged(null)
+                    TrailerPlayer(
+                        uri = crossfadeProgram.previewVideoUri.orEmpty(),
+                        onEnded = { advance(1) },
+                        onError = { advance(1) },
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                }
             }
         }
 
@@ -348,69 +369,85 @@ fun ContentCarousel(
  * as before. Portrait/square art with no swap-in available gets
  * [PortraitPosterBackdrop] instead of being force-cropped into
  * unrecognizability.
+ *
+ * The two full-bleed branches also feed [onDockBackdropChanged] — see
+ * [DockBackdrop]'s own doc (`BlurredArtwork.kt`) for why `TopShelfRow` needs
+ * this reported up rather than reading it locally. [rememberKenBurnsProgress]
+ * (not the [Modifier.kenBurns] convenience wrapper) is used explicitly here
+ * so the *same* `State<Float>` this composable's own sharp image animates
+ * with is exactly what's handed to the dock, not a second independent
+ * transition that would drift out of phase with it.
  */
 @Composable
-private fun PosterBackdrop(program: ChannelProgram, resolvedBackdropUrl: String?) {
+private fun PosterBackdrop(
+    program: ChannelProgram,
+    resolvedBackdropUrl: String?,
+    onDockBackdropChanged: (DockBackdrop?) -> Unit,
+) {
     val posterUri = program.posterArtUri
     // Ambient Ken Burns motion (ui/motion/KenBurns.kt) on both real-art
     // branches — restarts fresh per program automatically, since this
     // whole composable is already recomposed per AnimatedContent target
     // state (this file's own carousel Box).
     when {
-        resolvedBackdropUrl != null -> AsyncImage(
-            model = resolvedBackdropUrl,
-            contentDescription = program.title,
-            contentScale = ContentScale.Crop,
-            modifier = Modifier
-                .fillMaxSize()
-                .kenBurns(),
-        )
-        posterUri == null -> Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(MaterialTheme.colorScheme.surfaceVariant),
-        )
-        program.posterAspectRatio >= LandscapeAspectRatioThreshold -> AsyncImage(
-            model = posterUri,
-            contentDescription = program.title,
-            contentScale = ContentScale.Crop,
-            modifier = Modifier
-                .fillMaxSize()
-                .kenBurns(),
-        )
-        else -> PortraitPosterBackdrop(posterUri, program.title, program.posterAspectRatio)
+        resolvedBackdropUrl != null -> {
+            val progress = rememberKenBurnsProgress()
+            val blurred = rememberBlurredArtwork(resolvedBackdropUrl)
+            onDockBackdropChanged(DockBackdrop(blurred, progress))
+            AsyncImage(
+                model = resolvedBackdropUrl,
+                contentDescription = program.title,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .kenBurnsTransform(progress.value),
+            )
+        }
+        posterUri == null -> {
+            onDockBackdropChanged(null)
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(MaterialTheme.colorScheme.surfaceVariant),
+            )
+        }
+        program.posterAspectRatio >= LandscapeAspectRatioThreshold -> {
+            val progress = rememberKenBurnsProgress()
+            val blurred = rememberBlurredArtwork(posterUri)
+            onDockBackdropChanged(DockBackdrop(blurred, progress))
+            AsyncImage(
+                model = posterUri,
+                contentDescription = program.title,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .kenBurnsTransform(progress.value),
+            )
+        }
+        else -> {
+            onDockBackdropChanged(null)
+            PortraitPosterBackdrop(posterUri, program.title, program.posterAspectRatio)
+        }
     }
 }
 
 /**
  * tvOS's own real treatment for portrait-shaped art in a landscape hero: the
- * actual poster, uncropped, over an ambient blurred/darkened wash of itself
- * — not the same image force-cropped full-bleed, which (confirmed on real
- * Plex 204×306 art) zooms in and crops away most of the poster horizontally.
+ * actual poster, uncropped, over an ambient tinted wash — not the same image
+ * force-cropped full-bleed, which (confirmed on real Plex 204×306 art) zooms
+ * in and crops away most of the poster horizontally.
  *
- * Uses this project's own [blurredBackdrop] (`BackdropBlur.kt`) rather than
- * `Modifier.blur()` — that file's doc already established `Modifier.blur()`
- * needs API 31+ (this app's floor is API 30) and that a multi-pass
- * alternative crashed the renderer on real hardware; this reuses the same
- * single-pass technique already proven stable on-device elsewhere in this
- * screen, rather than re-litigating that constraint here.
- *
- * The blurred layer is declared *before* the sharp inset poster so the
- * inset visually sits in front of it, which means it draws one frame before
- * [recordBackdropSource] below has recorded anything the very first frame —
- * harmless for a static network image (unlike the live/animating content
- * [blurredBackdrop]'s own doc is concerned about), since every frame after
- * the first reads that same unchanging image back.
+ * Plain translucent scrim behind the inset poster, no blur — this used to
+ * blur a recorded copy of the poster itself as the backdrop
+ * (`BackdropBlur.kt`'s `blurredBackdrop`); removed, a real blur is being
+ * evaluated separately.
  */
 @Composable
 private fun PortraitPosterBackdrop(posterUri: String, title: String, aspectRatio: Float) {
-    val sourceLayer = rememberGraphicsLayer()
-    val lowResLayer = rememberGraphicsLayer()
     Box(modifier = Modifier.fillMaxSize()) {
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .blurredBackdrop(source = sourceLayer, lowResLayer = lowResLayer, sourceOffset = { Offset.Zero })
                 .background(MaterialTheme.colorScheme.background.copy(alpha = 0.6f)),
         )
         AsyncImage(
@@ -420,8 +457,7 @@ private fun PortraitPosterBackdrop(posterUri: String, title: String, aspectRatio
             modifier = Modifier
                 .align(Alignment.Center)
                 .fillMaxHeight(PortraitInsetHeightFraction)
-                .aspectRatio(aspectRatio)
-                .recordBackdropSource(sourceLayer),
+                .aspectRatio(aspectRatio),
         )
     }
 }

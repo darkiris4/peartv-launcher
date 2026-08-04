@@ -11,6 +11,11 @@ dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
+        // Google's RenderScript Intrinsics Replacement Toolkit
+        // (github.com/android/renderscript-intrinsics-replacement-toolkit)
+        // isn't published to Maven Central — only resolvable via JitPack,
+        // built on-demand from a pinned commit SHA (see app/build.gradle.kts).
+        maven { url = uri("https://jitpack.io") }
     }
 }
 

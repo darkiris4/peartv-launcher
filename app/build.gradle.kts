@@ -113,4 +113,11 @@ dependencies {
     implementation(libs.androidx.media3.exoplayer)
     implementation(libs.androidx.media3.exoplayer.hls)
     implementation(libs.androidx.media3.ui)
+
+    // Real Gaussian blur for the dock/status-pill/carousel backdrops,
+    // replacing the removed downscale/upscale stand-in (`BackdropBlur.kt`,
+    // deleted). Not `Modifier.blur()`/`RenderEffect` — API 31+, a generation
+    // past this project's confirmed API 30 reference floor. Operates on
+    // Bitmap, not a live Compose GraphicsLayer.
+    implementation(libs.renderscript.toolkit)
 }

@@ -85,18 +85,23 @@ private const val AmbientGlowRadiusFraction = 1.8f
  * The top-shelf tray and status pill (`TopShelfRow`/`StatusBar`, which
  * already deliberately share one panel tone — Dimens.kt's own
  * `TranslucentPanelAlpha` doc: "so both panels read as one consistent glass
- * material") sit at `TranslucentPanelAlpha` (0.9, nearly opaque) over
- * [ambientBackground]. That's opaque enough that the panel reads as almost
- * pure flat `colorScheme.surface` regardless of what's behind it — which,
- * once the background it sits on actually got bright enough to be visible
- * (this file's own tuning history above), created a hard seam confirmed
- * on-device: the tray's own bottom edge against the now-lit background
- * behind it, sharp enough to read as "a black line." Blending a touch of the
- * same [ambientBackground] tint into the panel's own base color — not a full
- * gradient, a single flat lift, appropriate for a small bounded card rather
- * than the whole screen — keeps the panel reading as its own elevated
- * surface while no longer looking like an unlit island dropped onto a lit
- * background.
+ * material") sit at some alpha over [ambientBackground] — `StatusBar` always
+ * `TranslucentPanelAlpha` itself; `TopShelfRow` that same fallback when
+ * there's no artwork to sample, otherwise a content-aware alpha derived from
+ * the current backdrop's own luminance (`TopShelfRow`'s own `dockGlassTint`
+ * doc — user-directed move toward a Liquid-Glass-style adaptive tint,
+ * replacing what used to be a single fixed 0.9-nearly-opaque value here).
+ * Across that whole range this base tint still needs to hold up rather than
+ * read as almost pure flat `colorScheme.surface` regardless of what's behind
+ * it — which, once the background it sits on actually got bright enough to
+ * be visible (this file's own tuning history above), created a hard seam
+ * confirmed on-device: the tray's own bottom edge against the now-lit
+ * background behind it, sharp enough to read as "a black line." Blending a
+ * touch of the same [ambientBackground] tint into the panel's own base color
+ * — not a full gradient, a single flat lift, appropriate for a small bounded
+ * card rather than the whole screen — keeps the panel reading as its own
+ * elevated surface while no longer looking like an unlit island dropped onto
+ * a lit background.
  */
 @Composable
 fun MaterialTheme.ambientPanelTint(): Color =

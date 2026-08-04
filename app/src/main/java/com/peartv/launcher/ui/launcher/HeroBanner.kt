@@ -22,7 +22,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.graphics.layer.GraphicsLayer
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.layout.ContentScale
@@ -93,22 +92,23 @@ private const val Tier2FillBackgroundBlend = 0.45f
  * own doc for why). A flat sampled-color fill, not a blurred banner: two
  * blur approaches were tried first for this same backdrop and abandoned.
  * A live `GraphicsLayer`-based blur (the downscale/upscale technique
- * `TopShelfRow`/`StatusBar` use, `BackdropBlur.kt`) silently produced an
- * empty layer on-device — nesting that recording inside this composable's
- * own outer [recordBackdropSource] capture (below) hit the same class of
- * hazard the Decisions Log's multi-pass-blur entry already flags for
- * chained `GraphicsLayer` operations on this hardware, just failing
- * quietly instead of crashing. A pre-shrunk-bitmap blur (a tiny
- * rasterization stretched back up via ordinary bilinear filtering) worked
- * technically but read as a pixelated, blocky mess rather than a genuine
- * frosted-glass look — user-rejected on sight, not a subtle tuning
- * complaint. An even earlier attempt at this same §3.1.2 Template 4
- * treatment reused the banner itself, shrunk, as a stand-in logo, and got
- * reverted (Decisions Log) — full-bleed banner art isn't designed to read
- * that way as a sharp mark; [TvApp.icon] is. Falls back to the plain sharp
- * banner only if [TvApp.icon] is somehow null (shouldn't happen in
- * practice) — [TvApp.iconPrimaryColorArgb] alone falls back to a neutral
- * theme color, same as [AppTile]'s own [TvApp.accentColorArgb] fallback.
+ * `TopShelfRow`/`StatusBar` used to use, `BackdropBlur.kt` — since deleted
+ * entirely) silently produced an empty layer on-device — nesting that
+ * recording inside this composable's own outer `recordBackdropSource`
+ * capture hit the same class of hazard the Decisions Log's multi-pass-blur
+ * entry already flags for chained `GraphicsLayer` operations on this
+ * hardware, just failing quietly instead of crashing. A
+ * pre-shrunk-bitmap blur (a tiny rasterization stretched back up via
+ * ordinary bilinear filtering) worked technically but read as a pixelated,
+ * blocky mess rather than a genuine frosted-glass look — user-rejected on
+ * sight, not a subtle tuning complaint. An even earlier attempt at this
+ * same §3.1.2 Template 4 treatment reused the banner itself, shrunk, as a
+ * stand-in logo, and got reverted (Decisions Log) — full-bleed banner art
+ * isn't designed to read that way as a sharp mark; [TvApp.icon] is. Falls
+ * back to the plain sharp banner only if [TvApp.icon] is somehow null
+ * (shouldn't happen in practice) — [TvApp.iconPrimaryColorArgb] alone
+ * falls back to a neutral theme color, same as [AppTile]'s own
+ * [TvApp.accentColorArgb] fallback.
  *
  * [contentAlpha] drives the collapsing-header behavior (tvOS photo
  * reference, `design/IMG_1858.jpeg` vs `IMG_1859.jpeg`): as
@@ -117,23 +117,17 @@ private const val Tier2FillBackgroundBlend = 0.45f
  * rather than just cropping smaller, matching the reference's "artwork
  * disappears entirely" collapsed state rather than a cropped sliver.
  *
- * [backdropSourceLayer] re-records this composable's entire final output
- * (backdrop art, vignettes, title — everything, via
- * [Modifier.recordBackdropSource]) on every draw pass, so `TopShelfRow` and
- * `StatusBar` can each draw a blurred crop of it as their own background
- * (see `BackdropBlur.kt`). This is the return of a mechanism the Decisions
- * Log's "§3.1.1 'liquid glass' tray/pill styling — removed" entry deleted
- * outright — reopened at user request (Decisions Log, "Dock/pill backdrop
- * blur"), rebuilt on the downscale/upscale technique in `BackdropBlur.kt`
- * rather than the real `RenderEffect` blur the original had (SDK-gated to
- * API 31+, so it was never actually active on this project's confirmed API
- * 30 reference hardware to begin with).
+ * No dock-backdrop blur feed here (unlike `ContentCarousel`'s own poster,
+ * see `DockBackdrop`'s doc, `BlurredArtwork.kt`) — Tier 1/2 has no rotating-
+ * artwork moment to blur from, and this app's now-deleted `BackdropBlur.kt`
+ * (a captured-frame blur) proved unreliable on this project's own reference
+ * hardware regardless. `TopShelfRow` simply falls back to plain
+ * translucency, same as `StatusBar`, whenever there's nothing to blur.
  */
 @Composable
 fun HeroBanner(
     activeApp: TvApp?,
     heroBackdrop: TmdbBackdrop?,
-    backdropSourceLayer: GraphicsLayer,
     modifier: Modifier = Modifier,
     contentAlpha: Float = 1f,
     // The title's own clearance from hero's bottom edge, i.e. however far
@@ -160,8 +154,7 @@ fun HeroBanner(
             // stacked below it (the dock). Confirmed on-device: real app
             // artwork/logos were visibly bleeding through the dock tray,
             // shifting position as the zoom/pan cycled.
-            .clip(RectangleShape)
-            .recordBackdropSource(backdropSourceLayer),
+            .clip(RectangleShape),
     ) {
         Crossfade(
             targetState = heroBackdrop?.backdropUrl to activeApp?.banner,

@@ -87,23 +87,25 @@ val TrayCornerRadius = 24.dp
 val TrayOuterMargin = 32.dp
 
 /**
- * Tray/pill panel fill opacity over their blurred backdrop (`BackdropBlur.kt`)
- * — shared by `TopShelfRow` and `StatusBar` so both panels read as one
- * consistent "glass" material rather than two independently-tuned looks.
- * Reopened at user request (Decisions Log, "Dock/pill backdrop blur") after
- * the Decisions Log's own prior "§3.1.1 'liquid glass' tray/pill styling —
- * removed" entry had settled on fully opaque for both.
+ * Tray/pill panel fill opacity — shared by `TopShelfRow` and `StatusBar` so
+ * both panels read as one consistent translucent material rather than two
+ * independently-tuned looks. Reopened at user request (Decisions Log, "Dock/
+ * pill backdrop blur") after the Decisions Log's own prior "§3.1.1 'liquid
+ * glass' tray/pill styling — removed" entry had settled on fully opaque for
+ * both.
  *
- * Raised from an initial `0.72f` — user-reported the pill as reading "nearly
- * totally transparent" at that value. A multi-pass blur (stronger softening
- * underneath, so the same alpha would read more frosted) was tried first and
- * reverted — it crashed the renderer outright on-device (Decisions Log:
- * "Multi-pass backdrop blur — reverted, renderer crash"). Raising the panel's
- * own opacity instead is the safe lever: still genuinely translucent (not
- * the fully-opaque `1f` the "liquid glass removed" entry originally settled
- * on), just weighted further toward the tint than the blur underneath it.
+ * `0.9f` (nearly opaque) was a compensating value from this app's earlier
+ * downscale/upscale "frosted glass" stand-in blur (`BackdropBlur.kt`) — that
+ * blur read weak on its own, so the panel leaned on tint instead. Lowered
+ * back down now that the backdrop underneath is a real Gaussian blur
+ * (`com.google.android.renderscript.Toolkit`, same file) strong enough to
+ * actually read through a more translucent panel — the whole point of
+ * swapping in a real blur was to be able to show it off. Theme-agnostic:
+ * [ambientPanelTint] itself already derives from `colorScheme`, so this
+ * reads correctly against both the dark and light schemes without a
+ * separate value per theme.
  */
-const val TranslucentPanelAlpha = 0.9f
+const val TranslucentPanelAlpha = 0.55f
 
 /**
  * The tray's full rendered height — tile height + the tray's own vertical

@@ -23,8 +23,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.layer.GraphicsLayer
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -34,12 +33,12 @@ import com.peartv.launcher.domain.usecase.GetInstalledAppsUseCase
 import com.peartv.launcher.domain.usecase.LaunchAppUseCase
 import com.peartv.launcher.domain.usecase.LaunchContentUseCase
 import com.peartv.launcher.domain.usecase.RequestUninstallUseCase
+import com.peartv.launcher.ui.launcher.DockBackdrop
 import com.peartv.launcher.ui.launcher.HeroExpansionMillis
 import com.peartv.launcher.ui.launcher.LauncherScreen
 import com.peartv.launcher.ui.launcher.LauncherViewModel
 import com.peartv.launcher.ui.launcher.LauncherViewModelFactory
 import com.peartv.launcher.ui.launcher.StatusBar
-import com.peartv.launcher.ui.launcher.rememberGraphicsLayer
 import com.peartv.launcher.ui.motion.LocalReduceMotion
 import com.peartv.launcher.ui.motion.isReduceMotionEnabled
 import com.peartv.launcher.ui.settings.SettingsRoute
@@ -144,17 +143,24 @@ private fun PearTvLauncherApp(
     PearTvLauncherTheme(darkTheme = isDarkTheme) {
         when (screen) {
             Screen.Launcher -> {
-                // Shared between `LauncherScreen`'s hero and `StatusBar`
-                // (a sibling here, not a descendant of the hero) so the
-                // pill can blur a crop of the same recorded backdrop the
-                // dock does — see `BackdropBlur.kt`. Hoisted to this shared
-                // ancestor rather than owned by either child.
-                val heroBackdropLayer = rememberGraphicsLayer()
-                var heroWindowPosition by remember { mutableStateOf(Offset.Zero) }
+                // Shared between `LauncherScreen`'s carousel and `StatusBar`
+                // (a sibling here, not a descendant of the launcher content)
+                // so the clock/settings pill can draw the same Liquid-Glass-
+                // style crop of the currently-shown poster the dock does —
+                // see `DockBackdrop`'s own doc (`BlurredArtwork.kt`). Hoisted
+                // to this shared ancestor rather than owned by either child.
+                var dockBackdrop by remember { mutableStateOf<DockBackdrop?>(null) }
+                // The hero/carousel's own real window rect — `StatusBar`
+                // needs this as the reference frame [dockBackdrop]'s artwork
+                // was `ContentScale.Crop`'d across, to map its own on-screen
+                // position back into that artwork's pixel coordinates
+                // (`positionAwareBackdropCrop`'s own doc, `GlassPanel.kt`).
+                // Hoisted for the same reason `dockBackdrop` is.
+                var heroWindowRect by remember { mutableStateOf(Rect.Zero) }
                 // User-directed: Up from the dock (via `ContentCarousel`, or
                 // directly for apps with no carousel — see `LauncherScreen`)
                 // should reach the settings gear. Hoisted here for the same
-                // reason `heroBackdropLayer` is — `StatusBar` and the launcher
+                // reason `dockBackdrop` is — `StatusBar` and the launcher
                 // content are siblings, not parent/child.
                 val settingsFocusRequester = remember { FocusRequester() }
                 // User-directed: the status pill (clock + settings gear)
@@ -164,9 +170,9 @@ private fun PearTvLauncherApp(
                 // signal `LauncherScreen` computes for the hero itself
                 // (`focusedItemId` in `dockItems`) rather than threading a
                 // callback out of it — `StatusBar` and the launcher content
-                // are siblings here, same reason `heroBackdropLayer`/
-                // `settingsFocusRequester` above are already hoisted to this
-                // shared ancestor instead of owned by either child.
+                // are siblings here, same reason `settingsFocusRequester`
+                // above is already hoisted to this shared ancestor instead
+                // of owned by either child.
                 val focusedItemId by launcherViewModel.focusedItemId.collectAsStateWithLifecycle()
                 val dockItems by launcherViewModel.dockItems.collectAsStateWithLifecycle()
                 val dockPackageNames = remember(dockItems) { dockItems.map { it.id }.toSet() }
@@ -179,14 +185,15 @@ private fun PearTvLauncherApp(
                 Box(modifier = Modifier.fillMaxSize()) {
                     LauncherRoute(
                         viewModel = launcherViewModel,
-                        heroBackdropLayer = heroBackdropLayer,
-                        onHeroPositioned = { heroWindowPosition = it },
+                        dockBackdrop = dockBackdrop,
+                        onDockBackdropChanged = { dockBackdrop = it },
+                        onHeroPositioned = { heroWindowRect = it },
                         settingsFocusRequester = settingsFocusRequester,
                     )
                     StatusBar(
                         onSettingsClick = { screen = Screen.Settings },
-                        blurSource = heroBackdropLayer,
-                        blurSourceWindowPosition = { heroWindowPosition },
+                        dockBackdrop = dockBackdrop,
+                        heroWindowRect = heroWindowRect,
                         settingsFocusRequester = settingsFocusRequester,
                         modifier = Modifier
                             .align(Alignment.TopEnd)
@@ -240,13 +247,15 @@ private fun PearTvLauncherApp(
 @Composable
 private fun LauncherRoute(
     viewModel: LauncherViewModel,
-    heroBackdropLayer: GraphicsLayer,
-    onHeroPositioned: (Offset) -> Unit,
+    dockBackdrop: DockBackdrop?,
+    onDockBackdropChanged: (DockBackdrop?) -> Unit,
+    onHeroPositioned: (Rect) -> Unit,
     settingsFocusRequester: FocusRequester,
 ) {
     LauncherScreen(
         viewModel = viewModel,
-        heroBackdropLayer = heroBackdropLayer,
+        dockBackdrop = dockBackdrop,
+        onDockBackdropChanged = onDockBackdropChanged,
         onHeroPositioned = onHeroPositioned,
         settingsFocusRequester = settingsFocusRequester,
     )

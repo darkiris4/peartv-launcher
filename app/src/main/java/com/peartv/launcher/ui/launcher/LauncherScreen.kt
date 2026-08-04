@@ -22,7 +22,7 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.layer.GraphicsLayer
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
@@ -33,6 +33,7 @@ import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.lerp
+import androidx.compose.ui.unit.toSize
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.peartv.launcher.domain.model.ChannelProgram
 import com.peartv.launcher.domain.model.TvApp
@@ -46,13 +47,21 @@ import kotlin.math.roundToInt
  * PRODUCT_SPEC.md §3.1 — hero (backdrop + metadata) with the top-shelf tray
  * overlapping its lower edge, then the app grid below.
  *
- * [heroBackdropLayer]/[onHeroPositioned] are hoisted up to `MainActivity`
- * rather than owned here, since `StatusBar` (a sibling of this whole screen,
- * not a descendant of it) needs the same recorded hero content for its own
- * blurred backdrop — see `BackdropBlur.kt`. This composable's only jobs with
- * them: report the hero region's real window position on every layout pass,
- * and hand the shared layer to [HeroBanner] (to record into) and
- * [TopShelfRow] (to blur a crop of).
+ * [dockBackdrop]/[onDockBackdropChanged]/[onHeroPositioned] are hoisted one
+ * level further still, up to `MainActivity` — `StatusBar` (the clock/
+ * settings pill) is *also* a Liquid-Glass-style consumer of the same
+ * currently-shown poster now, and it's a sibling of this whole screen, not a
+ * descendant of it, the same reason `settingsFocusRequester` is already
+ * hoisted that far. This composable's own job with them: hand
+ * [onDockBackdropChanged] to [ContentCarousel] (Tier 3's currently-shown
+ * poster reports up through it), [dockBackdrop] to [TopShelfRow] (to
+ * crop/tint) — see `DockBackdrop`'s own doc (`BlurredArtwork.kt`) — and both
+ * [onHeroPositioned] and this screen's own locally-kept copy of that same
+ * rect to [TopShelfRow] (`positionAwareBackdropCrop`'s own doc,
+ * `GlassPanel.kt`, for why the dock/pill need it at all). `null`/
+ * [Rect.Zero] whenever Tier 3 isn't active (or its current program has
+ * nothing blur-worthy) — every consumer falls back to plain translucency
+ * (or draws nothing) in that case.
  *
  * Structural hierarchy matches `../hamtv/public/index.html` (the separate,
  * unrenamed sibling web-prototype project this was originally reverse-
@@ -93,11 +102,13 @@ import kotlin.math.roundToInt
 @Composable
 fun LauncherScreen(
     viewModel: LauncherViewModel,
-    heroBackdropLayer: GraphicsLayer,
-    onHeroPositioned: (Offset) -> Unit,
+    dockBackdrop: DockBackdrop?,
+    onDockBackdropChanged: (DockBackdrop?) -> Unit,
+    onHeroPositioned: (Rect) -> Unit,
     settingsFocusRequester: FocusRequester,
     modifier: Modifier = Modifier,
 ) {
+    var heroWindowRect by remember { mutableStateOf(Rect.Zero) }
     val dockItems by viewModel.dockItems.collectAsStateWithLifecycle()
     val gridItems by viewModel.gridItems.collectAsStateWithLifecycle()
     val focusedApp by viewModel.focusedApp.collectAsStateWithLifecycle()
@@ -414,7 +425,21 @@ fun LauncherScreen(
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
-                        .onGloballyPositioned { onHeroPositioned(it.positionInWindow()) },
+                        // Real window position/size — `TopShelfRow`'s own
+                        // [positionAwareBackdropCrop] (`GlassPanel.kt`) needs
+                        // this as the reference frame the sharp poster is
+                        // `ContentScale.Crop`'d across, to map a panel's own
+                        // window rect back into the blurred artwork's pixel
+                        // coordinates. `StatusBar` needs the exact same
+                        // frame despite living outside this whole `Box` —
+                        // reported up via [onHeroPositioned] rather than
+                        // captured independently, same reasoning as
+                        // [onDockBackdropChanged]'s own doc.
+                        .onGloballyPositioned {
+                            val rect = Rect(it.positionInWindow(), it.size.toSize())
+                            heroWindowRect = rect
+                            onHeroPositioned(rect)
+                        },
                 ) {
                     if (expansionProgress > 0f) {
                         if (primaryChannel != null) {
@@ -434,16 +459,20 @@ fun LauncherScreen(
                                     focusRequester = carouselFocusRequester,
                                     upFocusRequester = settingsFocusRequester,
                                     trayClearance = trayClearance,
+                                    onDockBackdropChanged = onDockBackdropChanged,
                                     modifier = Modifier
                                         .fillMaxSize()
                                         .alpha(expansionProgress),
                                 )
                             }
                         } else {
+                            // No carousel active — nothing to keep
+                            // `dockBackdrop` fresh, so it'd otherwise hold
+                            // the last-shown poster's blur indefinitely.
+                            onDockBackdropChanged(null)
                             HeroBanner(
                                 activeApp = focusedApp,
                                 heroBackdrop = heroBackdrop,
-                                backdropSourceLayer = heroBackdropLayer,
                                 contentAlpha = expansionProgress,
                                 trayClearance = trayClearance,
                                 modifier = Modifier.fillMaxSize(),
@@ -493,7 +522,8 @@ fun LauncherScreen(
                     TopShelfRow(
                         apps = dockApps,
                         onAppClick = viewModel::onAppClick,
-                        blurSource = heroBackdropLayer,
+                        dockBackdrop = dockBackdrop,
+                        heroWindowRect = heroWindowRect,
                         // User-directed: Up from a dock tile should always
                         // reach something — the carousel when this app has
                         // one, straight to Settings otherwise (there's no
