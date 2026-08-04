@@ -6,8 +6,12 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -24,6 +28,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
@@ -131,6 +136,17 @@ private enum class Screen { Launcher, Settings }
  */
 private const val SettingsBackdropBlurRadius = 25
 
+/**
+ * User-directed: a plain crossfade (no slide/scale/zoom) — cheap on Shield
+ * hardware, matching the same reasoning already applied to the dock's own
+ * blur work (extra compositing layers there cost real frame time; a
+ * `Screen.Launcher`↔`Screen.Settings` swap is a much bigger subtree than a
+ * single dock panel, so the same caution applies more, not less). Kept to
+ * this alone unless a plain crossfade genuinely reads as insufficient once
+ * seen running on-device — not assumed in advance.
+ */
+private const val ScreenTransitionMillis = 280
+
 @Composable
 private fun PearTvLauncherApp(
     launcherViewModel: LauncherViewModel,
@@ -168,7 +184,50 @@ private fun PearTvLauncherApp(
 
     CompositionLocalProvider(LocalReduceMotion provides reduceMotion) {
     PearTvLauncherTheme(darkTheme = isDarkTheme) {
-        when (screen) {
+        AnimatedContent(
+            targetState = screen,
+            transitionSpec = {
+                fadeIn(animationSpec = tween(ScreenTransitionMillis)) togetherWith
+                    fadeOut(animationSpec = tween(ScreenTransitionMillis))
+            },
+            label = "screenTransition",
+        ) { targetScreen ->
+        // Guard against the outgoing branch (still composed here, mid
+        // exit-fade, during the crossfade above) staying D-pad-reachable —
+        // a common TV bug: press a direction mid-transition and focus lands
+        // somewhere in the *disappearing* screen instead of the incoming
+        // one, since Compose's own focus-search fallback doesn't know one
+        // branch is on its way out. `canFocus` set on this wrapping `Box`
+        // is inherited by every descendant focus target inside it (the
+        // same `FocusProperties`-ancestor-walk mechanism `settingsInitialFocus`
+        // already relies on, just applied at the whole-screen level here
+        // instead of a single row).
+        //
+        // Only the OUTGOING branch gets this modifier at all — confirmed
+        // on-device that adding it unconditionally (even with `canFocus =
+        // true` for the incoming branch) broke Settings' own 350ms initial-
+        // focus grace window (`settingsInitialFocus`/
+        // `LocalSettingsInitialFocusGraceActive`): a single gear-icon press
+        // navigated Root -> Appearance in one shot. Compose's `FocusProperties`
+        // ancestor walk applies the *farthest* ancestor's block last, so an
+        // explicit `canFocus = true` here — even though `true` looks like a
+        // no-op — was overriding the row-level `canFocus = false` set deeper
+        // in the tree during the grace window. Not adding a `focusProperties`
+        // node at all for the incoming branch leaves that deeper, more
+        // specific gating as the only thing in play, exactly as it worked
+        // before this whole-screen wrapper existed.
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .then(
+                    if (targetScreen != screen) {
+                        Modifier.focusProperties { canFocus = false }
+                    } else {
+                        Modifier
+                    },
+                ),
+        ) {
+        when (targetScreen) {
             Screen.Launcher -> {
                 // Shared between `LauncherScreen`'s carousel and `StatusBar`
                 // (a sibling here, not a descendant of the launcher content)
@@ -288,6 +347,8 @@ private fun PearTvLauncherApp(
                     onBack = { settingsBackStack.removeAt(settingsBackStack.lastIndex) },
                 )
             }
+        }
+        }
         }
     }
     }
