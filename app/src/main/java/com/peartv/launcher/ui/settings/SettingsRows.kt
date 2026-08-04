@@ -222,8 +222,10 @@ fun SettingsToggleRow(
 
 /**
  * One option in a value picker (e.g. Theme's Automatic/Light/Dark) — label +
- * a `primary`-colored checkmark when [selected]. The one deliberate, minimal
- * accent-color use across these rows.
+ * a checkmark when [selected]. Muted grey (`contentColor` at the same 0.6
+ * alpha [SettingsCategoryRow]'s own value preview uses), not the `primary`
+ * accent color — user-directed against the real tvOS reference: its own
+ * Settings checkmarks are grey, never the system-blue accent.
  */
 @Composable
 fun SettingsSelectionRow(
@@ -233,12 +235,12 @@ fun SettingsSelectionRow(
     modifier: Modifier = Modifier,
     description: String? = null,
 ) {
-    SettingsRowShell(text = text, onClick = onClick, modifier = modifier, description = description) {
+    SettingsRowShell(text = text, onClick = onClick, modifier = modifier, description = description) { contentColor ->
         if (selected) {
             Icon(
                 imageVector = Icons.Filled.Check,
                 contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary,
+                tint = contentColor.copy(alpha = 0.6f),
             )
         }
     }
