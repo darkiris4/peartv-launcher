@@ -9,12 +9,13 @@ import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -110,13 +111,24 @@ fun SettingsScreen(
     // "flash" of the previous page's description right after navigating).
     val focusedDescription = remember(route) { mutableStateOf<String?>(null) }
 
-    SettingsPageScaffold(title = route.title, modifier = modifier) {
+    // True, unconstrained screen width — captured above
+    // `SettingsPageScaffold`'s own safe-area padding, so the pill column's
+    // fixed width/position (below) is an honest percentage of the real
+    // screen, not the already-inset content area.
+    BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+        val screenWidth = maxWidth
+
+        SettingsPageScaffold(title = route.title, modifier = modifier) {
             // `weight(1f)` (ColumnScope, from SettingsPageScaffold's own
             // Column) — this Row must actually fill the remaining page
             // height so the icon column below has real vertical room to
             // work with, rather than just wrapping its own content height.
+            //
+            // No `horizontalArrangement` gap here anymore — the pill
+            // column's own `start` padding (below) now computes its exact
+            // position directly from [screenWidth], replacing the fixed
+            // 48dp gap this used to rely on.
             Row(
-                horizontalArrangement = Arrangement.spacedBy(SettingsIconListSpacing),
                 modifier = Modifier.fillMaxWidth().weight(1f),
             ) {
                 // User-directed bug fix, two reported symptoms with one root
@@ -201,18 +213,40 @@ fun SettingsScreen(
                 // centering, so its default top-start content alignment is
                 // exactly what's wanted here, no explicit alignment needed.
                 //
-                // Hugs the current page's own longest row label instead of
-                // a fixed guessed width (user-directed: pills read too wide,
-                // stretched well past their own text) — `IntrinsicSize.Max`
-                // sizes this Box to its one active child's natural width,
-                // which cascades down to every row's own `fillMaxWidth()` so
-                // they all still share one uniform pill width per page, just
-                // hugging content instead of a flat constant.
-                // `widthIn(max = ...)` is a safety cap only (user-directed:
-                // never more than half the screen) — comfortably under half
-                // of any realistic TV's logical width, rarely the binding
-                // constraint in practice.
-                Box(modifier = Modifier.width(IntrinsicSize.Max).widthIn(max = SettingsCategoryListMaxWidth)) {
+                // Fixed width + explicit offset, both computed directly
+                // from [screenWidth] — user-directed, reversing the earlier
+                // intrinsic-per-label hugging approach after direct
+                // comparison against a real tvOS Settings screen: pills
+                // should be a fixed, generous width regardless of route
+                // (`SettingsPillWidthFraction` of the true screen width),
+                // with their right edge sitting close to the screen's own
+                // right edge (`SettingsPillRightMarginFraction`), not
+                // wherever the longest label happened to end.
+                //
+                // `Modifier.offset`, not `.padding(start = ...)` — confirmed
+                // on-device this actually matters, not just style: this
+                // Row's own available width is bounded by
+                // `SettingsPageScaffold`'s safe-area padding (screenWidth
+                // minus 2x[SettingsHorizontalPadding]), which is narrower
+                // than icon-column-width + the padding this needed + the
+                // full pill width. `padding()` participates in the
+                // constraint system, so the pill silently got clamped
+                // ~30dp narrower than requested before it ever rendered.
+                // `offset()` repositions *after* this Box is independently
+                // measured at its real, unclamped [pillColumnWidth], so
+                // sibling/parent space never constrains it — the same
+                // reason it can legitimately sit closer to the true screen
+                // edge than this page's own shared safe-area padding
+                // would otherwise allow.
+                val pillColumnWidth = screenWidth * SettingsPillWidthFraction
+                val pillRightMargin = screenWidth * SettingsPillRightMarginFraction
+                val pillLeftEdge = screenWidth - pillRightMargin - pillColumnWidth
+                val pillOffset = pillLeftEdge - SettingsHorizontalPadding - SettingsIconColumnWidth
+                Box(
+                    modifier = Modifier
+                        .width(pillColumnWidth)
+                        .offset(x = pillOffset),
+                ) {
                     // User-directed: transitions between menus should be
                     // fluid, not an abrupt cut — a short crossfade only (no
                     // slide): this codebase's own focus-management history
@@ -292,6 +326,7 @@ fun SettingsScreen(
             }
         }
     }
+}
 /**
  * The persistent left panel — the app's muted badge mark. Composed once by
  * [SettingsScreen] regardless of [SettingsRoute], never per-page.
@@ -345,7 +380,6 @@ private fun SettingsRootContent(
 
 private val SettingsIconPanelSize = 280.dp
 private val SettingsIconPanelCornerRadius = 32.dp
-private val SettingsIconListSpacing = 48.dp
 
 /**
  * Fixed distance from the top of the icon column's own box to the icon's
@@ -358,14 +392,17 @@ private val SettingsIconListSpacing = 48.dp
 private val SettingsIconTopOffset = 24.dp
 
 /**
- * Safety cap on the content column's width (`IntrinsicSize.Max`-driven, see
- * this constant's own call site) — user-directed: pill width should never
- * reach half the screen. 420dp stays comfortably under half of any
- * realistic TV's logical width (this app's own reference device measures
- * ~960dp; half of that is 480dp), so in practice the real row content is
- * almost always the binding constraint, not this cap.
+ * Pill column width, as a fraction of the true screen width — user-directed,
+ * measured directly against a real tvOS Settings screen: a fixed, generous
+ * width regardless of route, not sized to whichever page's label happens to
+ * be longest (the previous `IntrinsicSize.Max` approach — reversed on
+ * direct comparison against native proportions, see this constant's own
+ * call site).
  */
-val SettingsCategoryListMaxWidth = 420.dp
+private const val SettingsPillWidthFraction = 0.40f
+
+/** Gap from the pill column's own right edge to the true screen's right edge, as a fraction of screen width — see [SettingsPillWidthFraction]'s own doc. */
+private const val SettingsPillRightMarginFraction = 0.04f
 
 /** User-directed: was 20dp, then 8dp — nudged closer each round, still read as too far below the icon. */
 private val SettingsDescriptionSpacing = 2.dp

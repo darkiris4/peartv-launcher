@@ -253,9 +253,11 @@ val SettingsRowHorizontalPadding = 28.dp
  * User-directed against the real tvOS reference (`design/settings-menu.png`,
  * measured directly): rows there are compact to the text line, roughly a
  * third of this row's old 18dp*2 padding — not the generous, roomier padding
- * this app's rows used to carry.
+ * this app's rows used to carry. Trimmed further (8dp → 4dp) — `titleMedium`
+ * already carries its own line-height leading above/below the glyphs, so
+ * 8dp was stacking extra space on top of that rather than replacing it.
  */
-val SettingsRowVerticalPadding = 8.dp
+val SettingsRowVerticalPadding = 4.dp
 val SettingsRowSpacing = 6.dp
 
 /** Guaranteed minimum gap between a row's label and its trailing content — see [SettingsRowShell]'s own doc for why this exists as a fixed value alongside the flexible spacer, not weight alone. */
