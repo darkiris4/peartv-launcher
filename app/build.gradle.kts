@@ -120,4 +120,12 @@ dependencies {
     // past this project's confirmed API 30 reference floor. Operates on
     // Bitmap, not a live Compose GraphicsLayer.
     implementation(libs.renderscript.toolkit)
+
+    // Cold-start splash — installSplashScreen() in MainActivity. Native
+    // SplashScreen is API 31+ only; this project's API 30 floor means it
+    // runs entirely on the library's own compat rendering path, not the
+    // OS's, so Theme.PearTvLauncher.Starting's windowSplashScreen* attrs
+    // (themes.xml) are load-bearing on every device this ships to, not a
+    // progressive-enhancement nicety.
+    implementation(libs.androidx.core.splashscreen)
 }

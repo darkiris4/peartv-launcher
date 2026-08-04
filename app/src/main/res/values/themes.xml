@@ -22,4 +22,46 @@
     <style name="Theme.PearTvLauncher.Light" parent="Theme.PearTvLauncher">
         <item name="android:windowBackground">@color/peartv_background_light</item>
     </style>
+
+    <!-- MainActivity's manifest-declared theme (AndroidManifest.xml) — this,
+         not Theme.PearTvLauncher above, is what's actually on screen at cold
+         process start, before any of MainActivity's Kotlin runs at all. API
+         30 has no native SplashScreen (that's API 31+), so this project runs
+         entirely on androidx.core:core-splashscreen's own compat renderer,
+         which reads these windowSplashScreen* attributes off whatever theme
+         is active the moment installSplashScreen() is called in onCreate —
+         these are load-bearing on every device this ships to, not a
+         progressive-enhancement nicety for newer OSes only.
+
+         A single fixed icon/background regardless of the user's light/dark
+         preference: that preference is a DataStore read MainActivity doesn't
+         resolve until partway through onCreate, well after this theme has
+         already been on screen for at least one frame — there's no signal
+         to branch on this early. postSplashScreenTheme is the *fallback*
+         MainActivity's real content theme reverts to once the splash exits,
+         only if MainActivity's own conditional `setTheme()` call (see its
+         own doc) didn't already override it first — which it always does in
+         practice, so this is a safety net, not the actual light/dark switch. -->
+    <style name="Theme.PearTvLauncher.Starting" parent="Theme.SplashScreen">
+        <item name="windowSplashScreenBackground">@color/peartv_background</item>
+        <!-- Not app_logo_grey.png directly — confirmed on-device (physical
+             Shield) that the SplashScreen framework (native API 31+, and
+             this compat library replicating it on our actual API 30 floor)
+             renders windowSplashScreenAnimatedIcon inside a fixed circular
+             "icon disc" by default, same convention as adaptive-icon
+             masking. app_logo_grey.png is a full-bleed square badge (own
+             background + "PearTV" wordmark reaching near its edges) — a
+             circular mask clips its corners and slices through the
+             wordmark. splash_icon.png is the same badge, pixel-identical,
+             just re-padded onto a transparent canvas at ~60% scale (see the
+             script that generated it, kept in this commit's history) so
+             its own corners stay inside the circle with margin to spare —
+             not a from-scratch redesign, and not a glyph-only cutout either
+             (the source art's glyph/background boundary is a soft
+             emboss gradient, not a hard edge, so a clean isolated cutout
+             isn't reliably extractable from it — see project memory on
+             this if revisiting). -->
+        <item name="windowSplashScreenAnimatedIcon">@drawable/splash_icon</item>
+        <item name="postSplashScreenTheme">@style/Theme.PearTvLauncher</item>
+    </style>
 </resources>

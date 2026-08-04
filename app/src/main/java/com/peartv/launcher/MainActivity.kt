@@ -1,7 +1,11 @@
 package com.peartv.launcher
 
+import android.animation.AnimatorSet
+import android.animation.ObjectAnimator
 import android.content.res.Configuration
 import android.os.Bundle
+import android.view.View
+import android.view.animation.AccelerateDecelerateInterpolator
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
@@ -32,7 +36,10 @@ import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.core.animation.doOnEnd
+import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.peartv.launcher.domain.repository.ThemeMode
 import com.peartv.launcher.domain.usecase.GetInstalledAppsUseCase
@@ -54,7 +61,9 @@ import com.peartv.launcher.ui.settings.SettingsScreen
 import com.peartv.launcher.ui.settings.SettingsViewModel
 import com.peartv.launcher.ui.settings.SettingsViewModelFactory
 import com.peartv.launcher.ui.theme.PearTvLauncherTheme
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 
 /**
@@ -71,6 +80,16 @@ import kotlinx.coroutines.runBlocking
 class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        // First statement, before anything else — installSplashScreen()
+        // captures whatever theme is active on the activity *right now*
+        // (Theme.PearTvLauncher.Starting, from the manifest, since nothing
+        // has called `setTheme()` yet) to read its windowSplashScreen*
+        // attributes. Calling it any later — e.g. after the `setTheme()`
+        // call below — would have it read attributes off our own runtime
+        // dark/light theme instead, which doesn't declare any, silently
+        // losing the branded icon.
+        val splashScreen = installSplashScreen()
+
         val app = application as PearTvLauncherApplication
         // Read once, synchronously, before super.onCreate() — DataStore's
         // own Flow is async, but the pre-Compose window theme (below) and
@@ -101,6 +120,47 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
+        // Flipped from exactly one place: `onFirstArtworkReady` below, once
+        // `PearTvLauncherApp`'s own `currentDockArtwork` — the same signal
+        // that feeds the dock's blur pipeline — sees the hero carousel's
+        // first real artwork Bitmap land. Everything that reads or writes
+        // this (this condition, the fallback `launch` below, and the
+        // Compose callback) runs on the main thread, so a plain captured
+        // `var` needs no synchronization.
+        var isLauncherContentReady = false
+        splashScreen.setKeepOnScreenCondition { !isLauncherContentReady }
+        // Ceiling for whatever `isLauncherContentReady` is waiting on never
+        // arriving — a slow/failed first artwork fetch (bad network,
+        // first-run empty cache), or simply no hero content to load at all
+        // (a Tier 1/2 app with no carousel never populates `dockBackdrop`
+        // in the first place — indistinguishable from "never arrives" from
+        // here, and correctly falls back the same way). Past this, show the
+        // Launcher as-is with whatever default/placeholder backdrop state
+        // it currently has rather than hold the splash indefinitely.
+        lifecycleScope.launch {
+            delay(SplashMaxHoldMillis)
+            isLauncherContentReady = true
+        }
+
+        // Custom exit: the system default is an instant cut. This crossfades
+        // the splash icon out while fading the real content in underneath —
+        // both directions at once, not just the icon fading to reveal
+        // already-fully-opaque content — kept short so the exit itself never
+        // reads as the slow part, however fast or slow the wait above was.
+        splashScreen.setOnExitAnimationListener { splashScreenView ->
+            val contentView = findViewById<View>(android.R.id.content)
+            contentView.alpha = 0f
+            val iconFadeOut = ObjectAnimator.ofFloat(splashScreenView.iconView, View.ALPHA, 1f, 0f)
+            val contentFadeIn = ObjectAnimator.ofFloat(contentView, View.ALPHA, 0f, 1f)
+            AnimatorSet().apply {
+                playTogether(iconFadeOut, contentFadeIn)
+                duration = SplashExitAnimationMillis
+                interpolator = AccelerateDecelerateInterpolator()
+                doOnEnd { splashScreenView.remove() }
+                start()
+            }
+        }
+
         setContent {
             val launcherViewModel: LauncherViewModel = viewModel(
                 factory = LauncherViewModelFactory(
@@ -117,10 +177,20 @@ class MainActivity : ComponentActivity() {
             val settingsViewModel: SettingsViewModel = viewModel(
                 factory = SettingsViewModelFactory(app.settingsRepository, initialThemeMode),
             )
-            PearTvLauncherApp(launcherViewModel, settingsViewModel)
+            PearTvLauncherApp(
+                launcherViewModel = launcherViewModel,
+                settingsViewModel = settingsViewModel,
+                onFirstArtworkReady = { isLauncherContentReady = true },
+            )
         }
     }
 }
+
+/** Ceiling for [MainActivity.onCreate]'s splash `setKeepOnScreenCondition` — see its own doc for what this is a fallback against. */
+private const val SplashMaxHoldMillis = 3000L
+
+/** [MainActivity.onCreate]'s splash exit crossfade duration — user-directed range, ~200-250ms. */
+private const val SplashExitAnimationMillis = 220L
 
 private enum class Screen { Launcher, Settings }
 
@@ -151,6 +221,13 @@ private const val ScreenTransitionMillis = 280
 private fun PearTvLauncherApp(
     launcherViewModel: LauncherViewModel,
     settingsViewModel: SettingsViewModel,
+    // Called (possibly more than once — idempotent either way) once the
+    // hero carousel's first real artwork Bitmap has decoded, i.e. the same
+    // `currentDockArtwork` transition from null to real below that already
+    // triggers Settings' own cached-backdrop re-blur. MainActivity's splash
+    // screen holds itself open until this fires (or its own fallback
+    // timeout elapses) — see its own doc.
+    onFirstArtworkReady: () -> Unit,
 ) {
     val themeMode by settingsViewModel.themeMode.collectAsStateWithLifecycle()
     // `Automatic` resolves live against the system's own light/dark
@@ -255,6 +332,11 @@ private fun PearTvLauncherApp(
                 LaunchedEffect(currentDockArtwork) {
                     currentDockArtwork?.let {
                         cachedSettingsBackdrop = it.reblurred(SettingsBackdropBlurRadius)
+                        // Fires on every artwork change, not just the first
+                        // — harmless, `onFirstArtworkReady` just flips
+                        // MainActivity's splash-hold flag to `true` and
+                        // does nothing once it already is.
+                        onFirstArtworkReady()
                     }
                 }
                 // The hero/carousel's own real window rect — `StatusBar`
