@@ -16,6 +16,7 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.unit.Dp
 import com.peartv.launcher.domain.model.TvApp
+import com.peartv.launcher.domain.repository.LaunchOrigin
 
 /**
  * PRODUCT_SPEC.md §3.1 — the general app grid below the top shelf.
@@ -77,7 +78,7 @@ import com.peartv.launcher.domain.model.TvApp
 @Composable
 fun AppGrid(
     items: List<LauncherGridItem>,
-    onAppClick: (TvApp) -> Unit,
+    onAppClick: (TvApp, LaunchOrigin?) -> Unit,
     onFolderClick: (String) -> Unit,
     modifier: Modifier = Modifier,
     onAppFocused: (TvApp) -> Unit = {},
@@ -129,7 +130,7 @@ fun AppGrid(
             when (item) {
                 is LauncherGridItem.AppItem -> AppTile(
                     app = item.app,
-                    onClick = { if (!editMode.isActive) onAppClick(item.app) },
+                    onClick = { origin -> if (!editMode.isActive) onAppClick(item.app, origin) },
                     onFocus = { onAppFocused(item.app) },
                     onLongPress = longPress,
                     isEditMode = editMode.isActive,

@@ -13,6 +13,7 @@ import com.peartv.launcher.domain.model.stableId
 import com.peartv.launcher.domain.model.withDock
 import com.peartv.launcher.domain.model.withPosition
 import com.peartv.launcher.domain.repository.ChannelsRepository
+import com.peartv.launcher.domain.repository.LaunchOrigin
 import com.peartv.launcher.domain.repository.LayoutRepository
 import com.peartv.launcher.domain.repository.SettingsRepository
 import com.peartv.launcher.domain.repository.TmdbRepository
@@ -224,6 +225,17 @@ class LauncherViewModel(
     private val _pendingMerge = MutableStateFlow<PendingMerge?>(null)
     val pendingMerge: StateFlow<PendingMerge?> = _pendingMerge.asStateFlow()
 
+    /**
+     * Bumped (never read for its actual value, just its identity as a
+     * change signal) every time [onAppClick] fires — `MainActivity`'s own
+     * `PearTvLauncherApp` observes this to trigger the brief "mask the
+     * handoff" fade/scale-down on the launcher's own content the instant a
+     * launch begins. `0L` is the untouched initial value, which that
+     * observer skips so cold launch doesn't itself play the dip.
+     */
+    private val _launchTrigger = MutableStateFlow(0L)
+    val launchTrigger: StateFlow<Long> = _launchTrigger.asStateFlow()
+
     fun onAppFocused(app: TvApp) {
         _focusedApp.value = app
         _focusedItemId.value = app.packageName
@@ -234,8 +246,9 @@ class LauncherViewModel(
         _focusedItemId.value = folderId
     }
 
-    fun onAppClick(app: TvApp) {
-        launchApp(app)
+    fun onAppClick(app: TvApp, origin: LaunchOrigin? = null) {
+        _launchTrigger.value = System.nanoTime()
+        launchApp(app, origin)
     }
 
     /** Tier 3 (§3.1.2) — launches a Content Rows program's own deep link, falling back to the app itself if it has none. */

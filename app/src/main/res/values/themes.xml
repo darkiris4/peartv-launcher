@@ -17,10 +17,26 @@
         <item name="android:windowBackground">@color/peartv_background</item>
         <item name="android:windowNoTitle">true</item>
         <item name="android:windowFullscreen">true</item>
+        <item name="android:windowAnimationStyle">@style/PearTvLauncherWindowAnimationStyle</item>
     </style>
 
     <style name="Theme.PearTvLauncher.Light" parent="Theme.PearTvLauncher">
         <item name="android:windowBackground">@color/peartv_background_light</item>
+    </style>
+
+    <!-- The "return to launcher" half of the tvOS-style launch/return zoom
+         (MainActivity's own launch-mask doc handles the "launch" half via
+         ActivityOptions.makeScaleUpAnimation, a cross-process API — this,
+         by contrast, is governed entirely by theme attributes, since we
+         don't own the covering app's own rendering to animate directly).
+         activityCloseEnterAnimation is how this launcher's own window
+         scales/fades back in once the app covering it finishes;
+         activityCloseExitAnimation is how that covering app's window
+         animates away — res/anim/activity_close_{enter,exit}.xml mirror
+         each other's scale direction, matching the launch-time zoom. -->
+    <style name="PearTvLauncherWindowAnimationStyle" parent="android:Animation.Activity">
+        <item name="android:activityCloseEnterAnimation">@anim/activity_close_enter</item>
+        <item name="android:activityCloseExitAnimation">@anim/activity_close_exit</item>
     </style>
 
     <!-- MainActivity's manifest-declared theme (AndroidManifest.xml) — this,

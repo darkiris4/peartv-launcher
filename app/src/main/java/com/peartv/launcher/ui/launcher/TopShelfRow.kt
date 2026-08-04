@@ -29,6 +29,7 @@ import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.toSize
 import com.peartv.launcher.domain.model.TvApp
+import com.peartv.launcher.domain.repository.LaunchOrigin
 import com.peartv.launcher.ui.motion.kenBurnsTransform
 
 /**
@@ -115,7 +116,7 @@ import com.peartv.launcher.ui.motion.kenBurnsTransform
 @Composable
 fun TopShelfRow(
     apps: List<TvApp>,
-    onAppClick: (TvApp) -> Unit,
+    onAppClick: (TvApp, LaunchOrigin?) -> Unit,
     dockBackdrop: DockBackdrop?,
     heroWindowRect: Rect,
     modifier: Modifier = Modifier,
@@ -176,7 +177,7 @@ fun TopShelfRow(
                 val downTarget = downFocusRequesters.getOrNull(index.coerceAtMost(downFocusRequesters.size - 1))
                 AppTile(
                     app = app,
-                    onClick = { if (!editMode.isActive) onAppClick(app) },
+                    onClick = { origin -> if (!editMode.isActive) onAppClick(app, origin) },
                     onFocus = { onAppFocused(app) },
                     onLongPress = if (!editMode.isActive) onOpenOptionsMenu else null,
                     isEditMode = editMode.isActive,

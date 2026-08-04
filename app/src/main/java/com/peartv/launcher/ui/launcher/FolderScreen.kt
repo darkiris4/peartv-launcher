@@ -40,6 +40,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.MaterialTheme
 import com.peartv.launcher.domain.model.TvApp
+import com.peartv.launcher.domain.repository.LaunchOrigin
 import com.peartv.launcher.ui.theme.ambientBackground
 
 /**
@@ -78,7 +79,7 @@ fun FolderScreen(
     folder: LauncherGridItem.FolderItem,
     enterRenameMode: Boolean,
     onRename: (String) -> Unit,
-    onAppClick: (TvApp) -> Unit,
+    onAppClick: (TvApp, LaunchOrigin?) -> Unit,
     onAppFocused: (TvApp) -> Unit,
     modifier: Modifier = Modifier,
     optionsMenuTargetId: String? = null,
@@ -152,7 +153,7 @@ fun FolderScreen(
                     val isOptionsMenuTarget = optionsMenuTargetId == app.packageName
                     AppTile(
                         app = app,
-                        onClick = { onAppClick(app) },
+                        onClick = { origin -> onAppClick(app, origin) },
                         onFocus = { onAppFocused(app) },
                         onLongPress = onOpenOptionsMenu,
                         isOptionsMenuTarget = isOptionsMenuTarget,

@@ -38,6 +38,7 @@ import androidx.compose.ui.graphics.painter.BitmapPainter
 import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextOverflow
@@ -45,8 +46,10 @@ import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import com.peartv.launcher.R
 import com.peartv.launcher.domain.model.TvApp
+import com.peartv.launcher.domain.repository.LaunchOrigin
 import com.peartv.launcher.ui.focus.tvOSFocusable
 import com.peartv.launcher.ui.motion.TvSprings
+import kotlin.math.roundToInt
 import kotlinx.coroutines.launch
 
 /** User-supplied tile art override (`design/settings-{light,dark}.png`) replaces the real Android TV Settings app's own icon/banner — see the `packageName` check below. Not `private`: [HeroBanner]'s Tier 2 fallback needs the same override for its own backdrop (same package, no import needed — same file package). */
@@ -87,12 +90,21 @@ const val SystemSettingsPackageName = "com.android.tv.settings"
  * ever wired to a non-noop callback for the one tile that's currently either
  * the Options-menu target or Edit Mode's active tile. All new parameters
  * default to "off," so every existing call site renders exactly as before.
+ *
+ * [onClick] receives this tile's own real screen bounds at the moment it
+ * was pressed (`null` if layout hasn't reported them yet) — separate from
+ * [onPositioned] above, which only fires for the current Options-menu/
+ * Edit-Mode target; every tile needs its own bounds available at click
+ * time, not just whichever one currently owns that callback. Feeds
+ * [com.peartv.launcher.domain.repository.LaunchOrigin], which callers
+ * thread down to [com.peartv.launcher.data.launcher.AppLauncherImpl] for
+ * the cross-process launch-zoom transition (`ActivityOptions.makeScaleUpAnimation`).
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun AppTile(
     app: TvApp,
-    onClick: () -> Unit,
+    onClick: (LaunchOrigin?) -> Unit,
     modifier: Modifier = Modifier,
     focusedScale: Float = 1.15f,
     showFocusLabel: Boolean = true,
@@ -185,6 +197,12 @@ fun AppTile(
         else -> 1f
     }
 
+    // This tile's own real window coordinates, independent of [onPositioned]
+    // above (that one only ever fires for the current Options-menu/Edit-Mode
+    // target) — every tile needs its own bounds on hand the instant it's
+    // clicked, for [onClick]'s own doc.
+    var tileCoordinates by remember { mutableStateOf<LayoutCoordinates?>(null) }
+
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         modifier = Modifier
@@ -198,7 +216,10 @@ fun AppTile(
     ) {
         Box(
             modifier = modifier
-                .onGloballyPositioned(onPositioned)
+                .onGloballyPositioned {
+                    tileCoordinates = it
+                    onPositioned(it)
+                }
                 .focusRequester(tileFocusRequester)
                 .tvOSFocusable(
                     // The active drag tile is guaranteed focused for the whole
@@ -216,7 +237,19 @@ fun AppTile(
                         }
                     },
                     onLongPress = onLongPress,
-                    onClick = onClick,
+                    onClick = {
+                        val bounds = tileCoordinates?.boundsInWindow()
+                        onClick(
+                            bounds?.let {
+                                LaunchOrigin(
+                                    x = it.left.roundToInt(),
+                                    y = it.top.roundToInt(),
+                                    width = it.width.roundToInt(),
+                                    height = it.height.roundToInt(),
+                                )
+                            },
+                        )
+                    },
                 )
                 .background(accentColor),
             contentAlignment = Alignment.Center,

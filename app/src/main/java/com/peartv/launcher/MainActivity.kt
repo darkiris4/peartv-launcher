@@ -11,6 +11,7 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -34,6 +35,7 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.core.animation.doOnEnd
@@ -217,6 +219,24 @@ private const val SettingsBackdropBlurRadius = 25
  */
 private const val ScreenTransitionMillis = 280
 
+/**
+ * "Mask the handoff" — a brief, subtle dip on the launcher's own content
+ * the instant an app launch begins (`LauncherViewModel.launchTrigger`),
+ * underneath the system's own cross-process `ActivityOptions` scale-up
+ * transition (`AppLauncherImpl`'s own doc). User-directed: kept short and
+ * doesn't try to time-match the system animation's own (unexposed) curve —
+ * short and subtle enough that any mismatch isn't noticeable either way.
+ * [LaunchMaskRecoverMillis] plays right after regardless of whether the
+ * launch actually succeeded — harmless (and invisible) if it did, since the
+ * launched app already covers this Activity by then; a visible recovery if
+ * it silently failed (e.g. no launch intent resolved) rather than leaving
+ * the UI stuck dipped.
+ */
+private const val LaunchMaskDipMillis = 120
+private const val LaunchMaskRecoverMillis = 150
+private const val LaunchMaskDipAlpha = 0.92f
+private const val LaunchMaskDipScale = 0.97f
+
 @Composable
 private fun PearTvLauncherApp(
     launcherViewModel: LauncherViewModel,
@@ -371,7 +391,28 @@ private fun PearTvLauncherApp(
                     animationSpec = tween(HeroExpansionMillis),
                     label = "statusBarCollapse",
                 )
-                Box(modifier = Modifier.fillMaxSize()) {
+                // "Mask the handoff" (this file's own doc on the constants
+                // above) — a one-shot dip-then-recover driven by
+                // `launchTrigger`, skipped entirely under reduce-motion
+                // rather than snapped, since it's purely cosmetic polish
+                // with nothing functional riding on it.
+                val launchTrigger by launcherViewModel.launchTrigger.collectAsStateWithLifecycle()
+                val launchMaskProgress = remember { Animatable(0f) }
+                LaunchedEffect(launchTrigger) {
+                    if (launchTrigger == 0L || reduceMotion) return@LaunchedEffect
+                    launchMaskProgress.animateTo(1f, tween(LaunchMaskDipMillis))
+                    launchMaskProgress.animateTo(0f, tween(LaunchMaskRecoverMillis))
+                }
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .graphicsLayer {
+                            val dip = launchMaskProgress.value
+                            alpha = 1f - (1f - LaunchMaskDipAlpha) * dip
+                            scaleX = 1f - (1f - LaunchMaskDipScale) * dip
+                            scaleY = scaleX
+                        },
+                ) {
                     LauncherRoute(
                         viewModel = launcherViewModel,
                         dockBackdrop = dockBackdrop,

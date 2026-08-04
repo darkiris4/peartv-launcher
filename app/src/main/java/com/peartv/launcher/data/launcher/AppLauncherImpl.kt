@@ -1,11 +1,16 @@
 package com.peartv.launcher.data.launcher
 
-import android.content.Context
+import android.app.Activity
+import android.app.ActivityOptions
+import android.app.Application
 import android.content.Intent
 import android.net.Uri
+import android.os.Bundle
 import android.util.Log
+import android.view.View
 import com.peartv.launcher.domain.model.TvApp
 import com.peartv.launcher.domain.repository.AppLauncher
+import com.peartv.launcher.domain.repository.LaunchOrigin
 
 private const val TAG = "AppLauncher"
 
@@ -24,10 +29,38 @@ private const val TAG = "AppLauncher"
  * required.
  */
 class AppLauncherImpl(
-    private val context: Context,
+    private val context: Application,
 ) : AppLauncher {
 
-    override fun launch(app: TvApp) {
+    // Tracks whichever Activity is currently resumed, purely so
+    // [buildLaunchOptions] has a live, attached View to build
+    // [ActivityOptions] from — this app only ever has one Activity
+    // (MainActivity, singleTask), so this never needs to disambiguate
+    // between several. Cleared on pause (not just overwritten on the next
+    // resume) so a launch racing a teardown falls back to a plain,
+    // un-animated startActivity instead of handing ActivityOptions a
+    // detached View.
+    private var foregroundActivity: Activity? = null
+
+    init {
+        context.registerActivityLifecycleCallbacks(object : Application.ActivityLifecycleCallbacks {
+            override fun onActivityResumed(activity: Activity) {
+                foregroundActivity = activity
+            }
+
+            override fun onActivityPaused(activity: Activity) {
+                if (foregroundActivity === activity) foregroundActivity = null
+            }
+
+            override fun onActivityCreated(activity: Activity, savedInstanceState: Bundle?) {}
+            override fun onActivityStarted(activity: Activity) {}
+            override fun onActivityStopped(activity: Activity) {}
+            override fun onActivitySaveInstanceState(activity: Activity, outState: Bundle) {}
+            override fun onActivityDestroyed(activity: Activity) {}
+        })
+    }
+
+    override fun launch(app: TvApp, origin: LaunchOrigin?) {
         val packageManager = context.packageManager
         val intent = packageManager.getLeanbackLaunchIntentForPackage(app.packageName)
             ?: packageManager.getLaunchIntentForPackage(app.packageName)
@@ -38,20 +71,22 @@ class AppLauncherImpl(
         }
 
         intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        runCatching { context.startActivity(intent) }
+        val options = buildLaunchOptions(origin)
+        runCatching { context.startActivity(intent, options?.toBundle()) }
             .onFailure { Log.w(TAG, "Failed to launch ${app.packageName}", it) }
     }
 
-    override fun launchContent(intentUri: String?, fallbackApp: TvApp) {
+    override fun launchContent(intentUri: String?, fallbackApp: TvApp, origin: LaunchOrigin?) {
+        val options = buildLaunchOptions(origin)
         val launchedContent = intentUri != null && runCatching {
             val intent = Intent.parseUri(intentUri, Intent.URI_INTENT_SCHEME)
             intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            context.startActivity(intent)
+            context.startActivity(intent, options?.toBundle())
         }.onFailure {
             Log.w(TAG, "Failed to launch content intent URI '$intentUri', falling back to app launch", it)
         }.isSuccess
 
-        if (!launchedContent) launch(fallbackApp)
+        if (!launchedContent) launch(fallbackApp, origin)
     }
 
     override fun requestUninstall(packageName: String) {
@@ -59,5 +94,35 @@ class AppLauncherImpl(
         intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         runCatching { context.startActivity(intent) }
             .onFailure { Log.w(TAG, "Failed to start uninstall flow for $packageName", it) }
+    }
+
+    /**
+     * `null` whenever there's nothing useful to animate from — no captured
+     * tile bounds ([origin]), or no resumed Activity to source a window
+     * token/View from (e.g. a launch racing process teardown) — callers
+     * pass that straight through to `startActivity`, which treats a `null`
+     * options bundle exactly like today's plain, un-animated call.
+     *
+     * `makeScaleUpAnimation` is the default; swap to `makeClipRevealAnimation`
+     * below (same arguments) to A/B compare — user-directed: try both
+     * against a couple of real installed apps and pick whichever reads
+     * better, since behavior can vary with the target app's own theme/window
+     * flags. Not wired as a runtime toggle since this is a one-time visual
+     * call to make once, not an ongoing setting.
+     */
+    private fun buildLaunchOptions(origin: LaunchOrigin?): ActivityOptions? {
+        val activity = foregroundActivity ?: return null
+        if (origin == null) return null
+        val sourceView = activity.findViewById<View>(android.R.id.content)
+        return ActivityOptions.makeScaleUpAnimation(
+            sourceView,
+            origin.x,
+            origin.y,
+            origin.width,
+            origin.height,
+        )
+        // return ActivityOptions.makeClipRevealAnimation(
+        //     sourceView, origin.x, origin.y, origin.width, origin.height,
+        // )
     }
 }

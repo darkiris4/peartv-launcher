@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Part of the tvOS-style return transition (MainActivity's own launch-mask
+     doc, ui/values/themes.xml's windowAnimationStyle) — how the closing
+     (foreground) app's window animates away as the launcher is revealed.
+     Mirrors activity_close_enter's scale direction in reverse. -->
+<set xmlns:android="http://schemas.android.com/apk/res/android"
+    android:interpolator="@android:anim/accelerate_interpolator">
+    <scale
+        android:duration="250"
+        android:fromXScale="1.0"
+        android:fromYScale="1.0"
+        android:pivotX="50%"
+        android:pivotY="50%"
+        android:toXScale="0.92"
+        android:toYScale="0.92" />
+    <alpha
+        android:duration="250"
+        android:fromAlpha="1.0"
+        android:toAlpha="0.0" />
+</set>
