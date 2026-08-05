@@ -14,6 +14,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -112,6 +113,22 @@ import com.peartv.launcher.ui.motion.kenBurnsTransform
  * through same as `AppGrid`; the dock is App-only (Decisions Log "Folders
  * excluded from the dock"), so nothing here ever needs folder-specific
  * handling.
+ *
+ * [active] — true while the tray/hero holds focus (`isTopShelfFocused`,
+ * `LauncherScreen`'s own doc), mirroring [GridBackdrop]'s identically-named
+ * param. This row freezes its own last non-null [dockBackdrop] artwork the
+ * same way [GridBackdrop] freezes its own copy (see that composable's own
+ * doc) rather than reading [dockBackdrop] live the whole time: without this,
+ * a real seam appeared right at this row's own bottom edge — confirmed
+ * on-device — whenever focus left the tray at the exact instant
+ * `ContentCarousel`'s poster/trailer cycle happened to be mid-`Trailer`
+ * phase (which deliberately nulls [dockBackdrop], its own doc in
+ * `ContentCarousel.kt` explains why). `ContentCarousel` then unmounts a
+ * moment later as the hero finishes collapsing, leaving this row's *live*
+ * read of [dockBackdrop] permanently stuck on that transient `null` — flat,
+ * un-tinted — while [GridBackdrop] right below it kept showing its own
+ * correctly-frozen last real artwork, a stark color mismatch at the
+ * boundary between them.
  */
 @Composable
 fun TopShelfRow(
@@ -119,6 +136,7 @@ fun TopShelfRow(
     onAppClick: (TvApp, LaunchOrigin?) -> Unit,
     dockBackdrop: DockBackdrop?,
     heroWindowRect: Rect,
+    active: Boolean,
     modifier: Modifier = Modifier,
     upFocusRequester: FocusRequester? = null,
     focusRequesters: List<FocusRequester> = emptyList(),
@@ -138,6 +156,14 @@ fun TopShelfRow(
     val shape = RoundedCornerShape(TrayCornerRadius)
     var panelRect by remember { mutableStateOf(Rect.Zero) }
 
+    var frozenArtwork by remember { mutableStateOf<BlurredArtwork?>(null) }
+    var frozenKenBurnsProgress by remember { mutableFloatStateOf(0f) }
+    val liveArtwork = dockBackdrop?.artwork?.value
+    if (active && liveArtwork != null) {
+        frozenArtwork = liveArtwork
+        frozenKenBurnsProgress = dockBackdrop?.kenBurnsProgress?.value ?: 0f
+    }
+
     Box(
         modifier = modifier
             .fillMaxWidth()
@@ -145,7 +171,7 @@ fun TopShelfRow(
             .clip(shape)
             .onGloballyPositioned { panelRect = Rect(it.positionInWindow(), it.size.toSize()) },
     ) {
-        val artwork = dockBackdrop?.artwork?.value
+        val artwork = if (active) liveArtwork else frozenArtwork
         if (artwork != null) {
             Box(
                 modifier = Modifier
@@ -155,7 +181,7 @@ fun TopShelfRow(
                         heroRect = { heroWindowRect },
                         panelRect = { panelRect },
                     )
-                    .kenBurnsTransform(dockBackdrop.kenBurnsProgress.value),
+                    .kenBurnsTransform(if (active) (dockBackdrop?.kenBurnsProgress?.value ?: 0f) else frozenKenBurnsProgress),
             )
         }
         Row(

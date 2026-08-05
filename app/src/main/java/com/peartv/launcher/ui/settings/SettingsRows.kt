@@ -22,6 +22,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.Icon
 import androidx.tv.material3.MaterialTheme
@@ -159,7 +160,12 @@ private fun SettingsRowShell(
             )
             .padding(horizontal = SettingsRowHorizontalPadding, vertical = SettingsRowVerticalPadding),
     ) {
-        Text(text = text, color = contentColor, style = MaterialTheme.typography.titleMedium)
+        Text(
+            text = text,
+            color = contentColor,
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Light,
+        )
         Spacer(modifier = Modifier.width(SettingsRowTrailingGap))
         Spacer(modifier = Modifier.weight(1f))
         trailing(contentColor)
@@ -274,6 +280,7 @@ fun SettingsInfoRow(
             text = text,
             color = MaterialTheme.colorScheme.onBackground,
             style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Light,
         )
         Spacer(modifier = Modifier.width(SettingsRowTrailingGap))
         Spacer(modifier = Modifier.weight(1f))

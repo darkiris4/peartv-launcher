@@ -7,10 +7,14 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
 import androidx.compose.ui.graphics.graphicsLayer
@@ -92,6 +96,68 @@ fun rememberKenBurnsProgress(): State<Float> {
         ),
         label = "kenBurnsProgress",
     )
+}
+
+/**
+ * [rememberKenBurnsProgress]'s cousin for a backdrop that needs to *pause*
+ * mid-cycle rather than restart fresh every time it remounts — the app
+ * grid's own collapsed-hero backdrop (`GridBackdrop.kt`), which freezes its
+ * Ken Burns motion while the grid holds focus and needs to pick back up
+ * smoothly, not snap, once the hero regains focus. `rememberInfiniteTransition`
+ * has no pause primitive: cancelling its own `LaunchedEffect` only stops it
+ * from composing, it doesn't stop the *next* mount from restarting at `0f`
+ * — confirmed relevant here because `ContentCarousel` (the real source of
+ * [DockBackdrop]'s own shared clock) fully unmounts once the hero finishes
+ * collapsing and mounts fresh, with a brand new clock starting at `0f`, the
+ * next time the hero expands. A caller that just mirrored [DockBackdrop]'s
+ * clock the whole time would inherit that same restart-from-zero snap.
+ *
+ * This owns a plain float [progress] instead, driven by hand via
+ * `withFrameNanos` — a `LaunchedEffect` keyed on [active] advances it only
+ * while [active] is true; being cancelled ([active] flipping `false`) simply
+ * leaves [progress] wherever it was, a real pause rather than a reset.
+ * [goingUp] (which end of the 0..1 cycle it's currently headed toward)
+ * survives the pause the same way (a plain `remember`, untouched by the
+ * effect above stopping), so resuming continues toward the same target
+ * instead of restarting the cycle from the top.
+ *
+ * [seed] is read once, the very first time this ever goes active, to start
+ * this local clock in phase with whatever the *shared* hero/dock clock was
+ * already showing at that instant — so this backdrop's first-ever freeze
+ * lines up with the hero's own actual on-screen motion rather than starting
+ * cold at `0f`. Every subsequent resume is already primed by its own prior
+ * pause, so [seed] is deliberately not re-read past that first run.
+ */
+@Composable
+fun rememberFreezableKenBurnsProgress(active: Boolean, seed: () -> Float): State<Float> {
+    val reduceMotion = LocalReduceMotion.current
+    val progress = remember { mutableFloatStateOf(0f) }
+    var goingUp by remember { mutableStateOf(true) }
+    var hasSeeded by remember { mutableStateOf(false) }
+
+    LaunchedEffect(active, reduceMotion) {
+        if (!active || reduceMotion) return@LaunchedEffect
+        if (!hasSeeded) {
+            progress.floatValue = seed().coerceIn(0f, 1f)
+            hasSeeded = true
+        }
+        var lastFrameNanos = withFrameNanos { it }
+        while (true) {
+            val frameNanos = withFrameNanos { it }
+            val deltaFraction = (frameNanos - lastFrameNanos) / 1_000_000f / KenBurnsCycleMillis
+            lastFrameNanos = frameNanos
+            var next = progress.floatValue + if (goingUp) deltaFraction else -deltaFraction
+            if (next >= 1f) {
+                next = 1f
+                goingUp = false
+            } else if (next <= 0f) {
+                next = 0f
+                goingUp = true
+            }
+            progress.floatValue = next
+        }
+    }
+    return progress
 }
 
 /** Applies [progress] (0..1, from [rememberKenBurnsProgress]) as the same scale+pan transform [kenBurns] itself uses. */

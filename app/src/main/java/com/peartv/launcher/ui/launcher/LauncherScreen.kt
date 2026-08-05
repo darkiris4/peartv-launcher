@@ -481,7 +481,32 @@ fun LauncherScreen(
                     }
                 }
 
-                // Layer 2 (middle): grid, slides up from fully below the
+                // Layer 2 (bottom-middle): the app grid's own background —
+                // deliberately full-screen here, not sized/positioned to the
+                // grid's own sub-box below (Layer 3, next) — confirmed
+                // on-device that scoping it to just that box left the strip
+                // above the tray and the empty margin either side of it
+                // (`TrayOuterMargin`, `TopShelfRow`'s own doc) showing flat,
+                // un-tinted [ambientBackground] instead, a hard seam right at
+                // the tray's own edges, not just its bottom. Fades in as the
+                // hero (Layer 1) fades out — `1f - expansionProgress`, the
+                // exact mirror of Layer 1's own `expansionProgress` alpha —
+                // so the two cross-dissolve into each other rather than one
+                // snapping in where the other leaves off.
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .alpha(1f - expansionProgress),
+                ) {
+                    GridBackdrop(
+                        dockBackdrop = dockBackdrop,
+                        heroWindowRect = heroWindowRect,
+                        active = isTopShelfFocused,
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                }
+
+                // Layer 3 (middle): grid, slides up from fully below the
                 // fold (expanded, [expansionProgress] = 1) into its resting
                 // position right below where the tray sits when collapsed
                 // ([expansionProgress] = 0) — same resting position/height
@@ -489,29 +514,33 @@ fun LauncherScreen(
                 // gave it, just computed directly now that this isn't a
                 // Column anymore.
                 if (gridItems.isNotEmpty()) {
-                    AppGrid(
-                        items = gridItems,
-                        onAppClick = viewModel::onAppClick,
-                        onFolderClick = viewModel::openFolder,
-                        onAppFocused = viewModel::onAppFocused,
-                        onFolderFocused = viewModel::onFolderFocused,
-                        editMode = editMode,
-                        optionsMenuTargetId = optionsMenu?.targetId,
-                        onOpenOptionsMenu = viewModel::openOptionsMenu,
-                        onTilePositioned = onTilePositioned,
-                        columnCount = columnCount,
-                        upFocusRequesters = dockFocusRequesters,
-                        rowZeroFocusRequesters = gridRowZeroFocusRequesters,
-                        tileWidth = collapsedTileWidth,
-                        rowSpacing = effectiveRowSpacing,
+                    Box(
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(actualGridHeight)
                             .offset(y = lerp(screenHeight, gridCollapsedTop, 1f - expansionProgress)),
-                    )
+                    ) {
+                        AppGrid(
+                            items = gridItems,
+                            onAppClick = viewModel::onAppClick,
+                            onFolderClick = viewModel::openFolder,
+                            onAppFocused = viewModel::onAppFocused,
+                            onFolderFocused = viewModel::onFolderFocused,
+                            editMode = editMode,
+                            optionsMenuTargetId = optionsMenu?.targetId,
+                            onOpenOptionsMenu = viewModel::openOptionsMenu,
+                            onTilePositioned = onTilePositioned,
+                            columnCount = columnCount,
+                            upFocusRequesters = dockFocusRequesters,
+                            rowZeroFocusRequesters = gridRowZeroFocusRequesters,
+                            tileWidth = collapsedTileWidth,
+                            rowSpacing = effectiveRowSpacing,
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                    }
                 }
 
-                // Layer 3 (top): tray — always fully opaque/visible, drawn
+                // Layer 4 (top): tray — always fully opaque/visible, drawn
                 // last so grid tiles sliding up under it (previous layer)
                 // never cover it mid-transition. Collapsed position is
                 // [ScreenSafeAreaVertical] from the top, the same margin the
@@ -524,6 +553,7 @@ fun LauncherScreen(
                         onAppClick = viewModel::onAppClick,
                         dockBackdrop = dockBackdrop,
                         heroWindowRect = heroWindowRect,
+                        active = isTopShelfFocused,
                         // User-directed: Up from a dock tile should always
                         // reach something — the carousel when this app has
                         // one, straight to Settings otherwise (there's no
