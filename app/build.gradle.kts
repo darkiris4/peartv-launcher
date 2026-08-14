@@ -1,4 +1,16 @@
+import java.util.Properties
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+
+// Baked-in default TMDB/TVDB keys — read from local.properties (gitignored,
+// never committed) rather than hardcoded here, since this repo is public.
+// SettingsRepositoryImpl falls back to these only when the user hasn't
+// entered their own key; an explicit Settings entry always wins.
+val localProperties = Properties().apply {
+    val localPropertiesFile = rootProject.file("local.properties")
+    if (localPropertiesFile.exists()) {
+        localPropertiesFile.inputStream().use { load(it) }
+    }
+}
 
 plugins {
     alias(libs.plugins.android.application)
@@ -19,6 +31,9 @@ android {
         targetSdk = 35
         versionCode = 1
         versionName = "0.5.0"
+
+        buildConfigField("String", "TMDB_API_KEY_DEFAULT", "\"${localProperties.getProperty("tmdb.api.key", "")}\"")
+        buildConfigField("String", "TVDB_API_KEY_DEFAULT", "\"${localProperties.getProperty("tvdb.api.key", "")}\"")
     }
 
     buildTypes {
@@ -47,6 +62,7 @@ android {
 
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 
     packaging {

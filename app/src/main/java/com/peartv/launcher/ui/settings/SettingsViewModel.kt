@@ -3,10 +3,12 @@ package com.peartv.launcher.ui.settings
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import com.peartv.launcher.domain.repository.ArtworkSource
 import com.peartv.launcher.domain.repository.SettingsRepository
 import com.peartv.launcher.domain.repository.ThemeMode
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
@@ -28,12 +30,31 @@ class SettingsViewModel(
     val tmdbApiKey: StateFlow<String?> = settingsRepository.tmdbApiKey
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
 
+    val tvdbApiKey: StateFlow<String?> = settingsRepository.tvdbApiKey
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
+
+    val artworkSource: StateFlow<ArtworkSource> = settingsRepository.artworkSource
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), ArtworkSource.Native)
+
+    /** [ArtworkSourceSettingsContent]'s `Online`/`Automatic` rows are unselectable without this — see [ArtworkSource]'s own doc. */
+    val hasAnyProviderKey: StateFlow<Boolean> = combine(tmdbApiKey, tvdbApiKey) { tmdb, tvdb ->
+        !tmdb.isNullOrBlank() || !tvdb.isNullOrBlank()
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+
     fun setThemeMode(mode: ThemeMode) {
         viewModelScope.launch { settingsRepository.setThemeMode(mode) }
     }
 
     fun setTmdbApiKey(key: String) {
         viewModelScope.launch { settingsRepository.setTmdbApiKey(key) }
+    }
+
+    fun setTvdbApiKey(key: String) {
+        viewModelScope.launch { settingsRepository.setTvdbApiKey(key) }
+    }
+
+    fun setArtworkSource(source: ArtworkSource) {
+        viewModelScope.launch { settingsRepository.setArtworkSource(source) }
     }
 
     /** System > Reset Settings, after the user confirms — see `SystemSettingsContent`'s own confirm prompt. */

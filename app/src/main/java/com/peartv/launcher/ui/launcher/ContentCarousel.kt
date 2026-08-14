@@ -1,5 +1,6 @@
 package com.peartv.launcher.ui.launcher
 
+import android.content.Context
 import android.util.Log
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.animateFloatAsState
@@ -58,14 +59,21 @@ import androidx.media3.ui.PlayerView
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import coil.compose.AsyncImage
+import coil.imageLoader
+import coil.request.ImageRequest
 import com.peartv.launcher.domain.model.AppChannel
 import com.peartv.launcher.domain.model.ChannelProgram
+import com.peartv.launcher.domain.model.ResolvedArtwork
+import com.peartv.launcher.domain.model.TvApp
+import com.peartv.launcher.domain.repository.ArtworkSource
 import com.peartv.launcher.ui.focus.FocusGainMillis
 import com.peartv.launcher.ui.focus.FocusLossMillis
 import com.peartv.launcher.ui.motion.kenBurnsTransform
 import com.peartv.launcher.ui.motion.rememberKenBurnsProgress
 import com.peartv.launcher.ui.theme.ambientPanelTint
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 
 /** How long a poster holds before either playing its trailer (if published) or advancing — user-directed, raised from the original 5s. */
 private const val PosterHoldMillis = 8000L
@@ -76,6 +84,9 @@ private const val CarouselTransitionMillis = 400
 /** Ambient/background trailer playback — deliberately silent by default (this is a passively-cycling home-screen surface, not something the user opened to watch); flip if that reads wrong on-device. */
 private const val TrailerMuted = true
 
+/** How many programs *ahead* of the currently-shown one get their artwork prefetched in the background — see the `resolvedBackdrops` cache's own doc for why. 2 (3 total including the current item) comfortably resolves within [PosterHoldMillis]'s 8s hold at this network's real observed per-item latency (~0.4-1.1s), without firing a large burst of concurrent requests for programs that may never actually be reached. */
+private const val PrefetchWindowSize = 2
+
 /**
  * Poster quality — confirmed on-device (real published channel data):
  * Apple TV/Hulu's `ASPECT_RATIO_16_9` (1.78) art crops full-bleed fine; Plex
@@ -85,7 +96,8 @@ private const val TrailerMuted = true
  * ratio this app's aspect-ratio map produces, comfortably above every
  * portrait/square one.
  */
-private const val LandscapeAspectRatioThreshold = 1.2f
+/** Not `private` — `LauncherViewModel.resolveArtwork`'s `Automatic` policy reuses this same threshold for its own reactive aspect-ratio check, same package. */
+const val LandscapeAspectRatioThreshold = 1.2f
 
 /** How much of the screen's height a portrait/square poster's own inset art occupies when there's no TMDB backdrop to swap in instead — large enough to read clearly, small enough to leave room for ProgramMetadata below. */
 private const val PortraitInsetHeightFraction = 0.55f
@@ -93,6 +105,25 @@ private const val PortraitInsetHeightFraction = 0.55f
 private const val TAG = "ContentCarousel"
 
 private enum class CarouselPhase { Poster, Trailer }
+
+/**
+ * `LauncherViewModel.resolveArtwork`'s `Automatic` policy needs the channel
+ * poster's *real* decoded pixel dimensions (see that function's own doc for
+ * why [ChannelProgram.posterAspectRatio] alone isn't enough) — reuses
+ * [BlurredArtwork.kt]'s established `ImageRequest`+`imageLoader` pattern, but
+ * lighter: no `allowHardware(false)` (only needed there for `Toolkit.blur`'s
+ * CPU pixel access, not relevant here) and reads `Drawable.intrinsicWidth`/
+ * `intrinsicHeight` directly rather than casting to `BitmapDrawable`, so
+ * Coil's normal (faster) hardware-bitmap decode path is left alone.
+ */
+private suspend fun decodeImageDimensions(context: Context, uri: String): Pair<Int, Int>? =
+    withContext(Dispatchers.IO) {
+        runCatching {
+            val request = ImageRequest.Builder(context).data(uri).build()
+            val drawable = context.imageLoader.execute(request).drawable ?: return@runCatching null
+            drawable.intrinsicWidth to drawable.intrinsicHeight
+        }.getOrNull()
+    }
 
 /**
  * PRODUCT_SPEC.md §3.1.2 Template 1 (Full-Screen Carousel) — Tier 3's
@@ -145,7 +176,9 @@ private enum class CarouselPhase { Poster, Trailer }
 fun ContentCarousel(
     channel: AppChannel,
     onProgramClick: (ChannelProgram) -> Unit,
-    resolveBackdropUrl: suspend (title: String) -> String?,
+    resolveArtwork: suspend (program: ChannelProgram, channelArtWidth: Int?, channelArtHeight: Int?) -> ResolvedArtwork,
+    artworkSource: ArtworkSource,
+    activeApp: TvApp?,
     focusRequester: FocusRequester,
     upFocusRequester: FocusRequester,
     modifier: Modifier = Modifier,
@@ -190,20 +223,56 @@ fun ContentCarousel(
     }
 
     // Poster quality — resolved independently of the hold/advance timer
-    // above (its own effect, not folded into the one above) so a slow TMDB
-    // lookup never delays the poster hold itself. Keyed on `index` alone,
-    // not `cycle`: a network fetch is idempotent and cache-checked below, so
-    // re-running it for the single-item edge case the `cycle` counter above
-    // exists for is harmless, not incorrect. Landscape art never attempts a
-    // lookup at all — Apple TV/Hulu's own art is already the right shape;
-    // only portrait/square art (confirmed on real Plex data) tries a swap-in.
-    val resolvedBackdrops = remember(channel) { mutableStateMapOf<Int, String?>() }
+    // above (its own effect, not folded into the one above) so a slow
+    // provider lookup never delays the poster hold itself. `remember` keys
+    // on `artworkSource` — a setting change invalidates every
+    // already-resolved decision (they were made under the *old* policy),
+    // lazily re-resolved as each index comes back into view rather than all
+    // at once. Every program attempts this now, not just portrait/square
+    // ones — `LauncherViewModel.resolveArtwork`'s own policy decides what to
+    // do with landscape channel art now, this composable no longer gates
+    // the attempt itself.
+    //
+    // Prefetch window, not just the current index — confirmed on-device
+    // (real TVDB/TMDB calls, ~400ms-1.1s each) that resolving purely
+    // on-demand showed the channel's own art for a beat on *every single*
+    // poster before the online swap-in landed, once the portrait-only gate
+    // above stopped limiting how many programs even attempted this. The
+    // `PosterHoldMillis` hold (8s) comfortably covers resolving a few
+    // programs ahead sequentially at this network's real observed latency,
+    // so by the time the carousel naturally advances to one, its own
+    // resolution has usually already landed. The current index always
+    // resolves first (highest priority) before any prefetching starts.
+    // Sequential, not concurrent — kinder to TMDB/TVDB rate limits than
+    // firing several requests at once, and still finishes well inside the
+    // hold window. Self-healing across advances: if the user advances
+    // before a prefetch finishes, this whole `LaunchedEffect` (including
+    // any in-flight prefetch) is cancelled and restarts keyed on the new
+    // `index`, which immediately re-prioritizes whatever's now on screen —
+    // whatever prefetch results already landed before cancellation stay in
+    // `resolvedBackdrops`, nothing already resolved is wasted.
+    val context = LocalContext.current
+    val resolvedBackdrops = remember(channel, artworkSource) { mutableStateMapOf<Int, ResolvedArtwork>() }
+
+    suspend fun ensureResolved(targetIndex: Int, reason: String) {
+        if (resolvedBackdrops.containsKey(targetIndex)) {
+            Log.d(TAG, "[$reason] index=$targetIndex already cached, skipping")
+            return
+        }
+        val targetProgram = channel.programs.getOrNull(targetIndex) ?: return
+        val startMs = System.currentTimeMillis()
+        val posterUri = targetProgram.posterArtUri
+        val dimensions = if (posterUri != null) decodeImageDimensions(context, posterUri) else null
+        Log.d(TAG, "[$reason] index=$targetIndex '${targetProgram.title}' resolving... channelPosterUri=$posterUri channelAspectRatio=${targetProgram.posterAspectRatio} decodedDimensions=$dimensions")
+        val result = resolveArtwork(targetProgram, dimensions?.first, dimensions?.second)
+        resolvedBackdrops[targetIndex] = result
+        Log.d(TAG, "[$reason] index=$targetIndex '${targetProgram.title}' resolved in ${System.currentTimeMillis() - startMs}ms -> $result")
+    }
+
     LaunchedEffect(index) {
-        if (resolvedBackdrops.containsKey(index)) return@LaunchedEffect
-        resolvedBackdrops[index] = if (program.posterAspectRatio < LandscapeAspectRatioThreshold) {
-            resolveBackdropUrl(program.title)
-        } else {
-            null
+        ensureResolved(index, "current")
+        for (ahead in 1..PrefetchWindowSize) {
+            ensureResolved((index + ahead).mod(channel.programs.size), "prefetch+$ahead")
         }
     }
 
@@ -269,7 +338,7 @@ fun ContentCarousel(
                 if (crossfadeIndex to crossfadePhase == index to phase) onDockBackdropChanged(it)
             }
             when (crossfadePhase) {
-                CarouselPhase.Poster -> PosterBackdrop(crossfadeProgram, resolvedBackdrops[crossfadeIndex], guardedOnDockBackdropChanged)
+                CarouselPhase.Poster -> PosterBackdrop(crossfadeProgram, resolvedBackdrops[crossfadeIndex], activeApp, guardedOnDockBackdropChanged)
                 CarouselPhase.Trailer -> {
                     // No artwork concept while a trailer plays — falls back
                     // to `TopShelfRow`'s own plain-translucency default
@@ -364,13 +433,19 @@ fun ContentCarousel(
 
 /**
  * Poster quality (confirmed on real published channel data — see
- * [LandscapeAspectRatioThreshold]'s doc): landscape art (or a [resolvedBackdropUrl]
- * TMDB swap-in, which is always a landscape backdrop) fills full-bleed same
- * as before. Portrait/square art with no swap-in available gets
- * [PortraitPosterBackdrop] instead of being force-cropped into
- * unrecognizability.
+ * [LandscapeAspectRatioThreshold]'s doc): landscape art (or a
+ * [ResolvedArtwork.OnlineMatch] swap-in, which is always a landscape
+ * backdrop) fills full-bleed. Portrait/square art with no swap-in available
+ * gets [PortraitPosterBackdrop] instead of being force-cropped into
+ * unrecognizability. [ResolvedArtwork.UseTier2Icon] (the `ArtworkSource`
+ * policy found nothing usable — `LauncherViewModel.resolveArtwork`'s own
+ * doc) renders [activeApp]'s own icon+color card ([Tier2IconFill]) instead
+ * of a broken or absent poster. `null` [resolvedArtwork] (the async lookup
+ * hasn't landed yet) is treated the same as [ResolvedArtwork.UseChannelArt]
+ * — show the channel's own art immediately, swap to the resolved outcome
+ * once it lands, rather than a loading flash.
  *
- * The two full-bleed branches also feed [onDockBackdropChanged] — see
+ * The full-bleed branches also feed [onDockBackdropChanged] — see
  * [DockBackdrop]'s own doc (`BlurredArtwork.kt`) for why `TopShelfRow` needs
  * this reported up rather than reading it locally. [rememberKenBurnsProgress]
  * (not the [Modifier.kenBurns] convenience wrapper) is used explicitly here
@@ -381,7 +456,8 @@ fun ContentCarousel(
 @Composable
 private fun PosterBackdrop(
     program: ChannelProgram,
-    resolvedBackdropUrl: String?,
+    resolvedArtwork: ResolvedArtwork?,
+    activeApp: TvApp?,
     onDockBackdropChanged: (DockBackdrop?) -> Unit,
 ) {
     val posterUri = program.posterArtUri
@@ -389,44 +465,73 @@ private fun PosterBackdrop(
     // branches — restarts fresh per program automatically, since this
     // whole composable is already recomposed per AnimatedContent target
     // state (this file's own carousel Box).
-    when {
-        resolvedBackdropUrl != null -> {
-            val progress = rememberKenBurnsProgress()
-            val blurred = rememberBlurredArtwork(resolvedBackdropUrl)
-            onDockBackdropChanged(DockBackdrop(blurred, progress))
-            AsyncImage(
-                model = resolvedBackdropUrl,
-                contentDescription = program.title,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier
-                    .fillMaxSize()
-                    .kenBurnsTransform(progress.value),
-            )
+    when (resolvedArtwork) {
+        is ResolvedArtwork.OnlineMatch -> {
+            // Provider ranking prefers a landscape candidate (see each
+            // repository's own `searchBackdrop` doc) but doesn't require
+            // one — confirmed on-device that force-cropping a
+            // portrait-shaped match full-bleed looked badly zoomed-in, not
+            // actually landscape despite technically filling the frame. A
+            // non-landscape match gets the exact same inset/uncropped
+            // treatment channel-provided portrait art already uses, real
+            // dimensions respected either way.
+            val isLandscape = resolvedArtwork.width > 0 && resolvedArtwork.height > 0 &&
+                resolvedArtwork.width.toFloat() / resolvedArtwork.height >= LandscapeAspectRatioThreshold
+            if (isLandscape) {
+                val progress = rememberKenBurnsProgress()
+                val blurred = rememberBlurredArtwork(resolvedArtwork.url)
+                onDockBackdropChanged(DockBackdrop(blurred, progress))
+                AsyncImage(
+                    model = resolvedArtwork.url,
+                    contentDescription = program.title,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .kenBurnsTransform(progress.value),
+                )
+            } else {
+                onDockBackdropChanged(null)
+                PortraitPosterBackdrop(
+                    resolvedArtwork.url,
+                    program.title,
+                    resolvedArtwork.width.toFloat() / resolvedArtwork.height.coerceAtLeast(1),
+                )
+            }
         }
-        posterUri == null -> {
+        ResolvedArtwork.UseTier2Icon -> {
             onDockBackdropChanged(null)
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(MaterialTheme.colorScheme.surfaceVariant),
+            Tier2IconFill(
+                icon = activeApp?.icon,
+                iconPrimaryColorArgb = activeApp?.iconPrimaryColorArgb,
+                modifier = Modifier.fillMaxSize(),
             )
         }
-        program.posterAspectRatio >= LandscapeAspectRatioThreshold -> {
-            val progress = rememberKenBurnsProgress()
-            val blurred = rememberBlurredArtwork(posterUri)
-            onDockBackdropChanged(DockBackdrop(blurred, progress))
-            AsyncImage(
-                model = posterUri,
-                contentDescription = program.title,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier
-                    .fillMaxSize()
-                    .kenBurnsTransform(progress.value),
-            )
-        }
-        else -> {
-            onDockBackdropChanged(null)
-            PortraitPosterBackdrop(posterUri, program.title, program.posterAspectRatio)
+        ResolvedArtwork.UseChannelArt, null -> when {
+            posterUri == null -> {
+                onDockBackdropChanged(null)
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(MaterialTheme.colorScheme.surfaceVariant),
+                )
+            }
+            program.posterAspectRatio >= LandscapeAspectRatioThreshold -> {
+                val progress = rememberKenBurnsProgress()
+                val blurred = rememberBlurredArtwork(posterUri)
+                onDockBackdropChanged(DockBackdrop(blurred, progress))
+                AsyncImage(
+                    model = posterUri,
+                    contentDescription = program.title,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .kenBurnsTransform(progress.value),
+                )
+            }
+            else -> {
+                onDockBackdropChanged(null)
+                PortraitPosterBackdrop(posterUri, program.title, program.posterAspectRatio)
+            }
         }
     }
 }
@@ -435,7 +540,15 @@ private fun PosterBackdrop(
  * tvOS's own real treatment for portrait-shaped art in a landscape hero: the
  * actual poster, uncropped, over an ambient tinted wash — not the same image
  * force-cropped full-bleed, which (confirmed on real Plex 204×306 art) zooms
- * in and crops away most of the poster horizontally.
+ * in and crops away most of the poster horizontally. Also reused (not just
+ * for channel-provided portrait art) for a [ResolvedArtwork.OnlineMatch]
+ * that turned out not to be landscape-shaped — same reasoning applies to a
+ * portrait provider match as to portrait channel art.
+ *
+ * Ambient Ken Burns motion, same [kenBurnsTransform] the full-bleed
+ * branches use — applied to the *inset* image itself, not a full-bleed
+ * layer, so the pan/zoom stays within the poster's own real proportions
+ * rather than assuming a landscape frame to move around in.
  *
  * Plain translucent scrim behind the inset poster, no blur — this used to
  * blur a recorded copy of the poster itself as the backdrop
@@ -444,6 +557,7 @@ private fun PosterBackdrop(
  */
 @Composable
 private fun PortraitPosterBackdrop(posterUri: String, title: String, aspectRatio: Float) {
+    val progress = rememberKenBurnsProgress()
     Box(modifier = Modifier.fillMaxSize()) {
         Box(
             modifier = Modifier
@@ -457,7 +571,8 @@ private fun PortraitPosterBackdrop(posterUri: String, title: String, aspectRatio
             modifier = Modifier
                 .align(Alignment.Center)
                 .fillMaxHeight(PortraitInsetHeightFraction)
-                .aspectRatio(aspectRatio),
+                .aspectRatio(aspectRatio)
+                .kenBurnsTransform(progress.value),
         )
     }
 }

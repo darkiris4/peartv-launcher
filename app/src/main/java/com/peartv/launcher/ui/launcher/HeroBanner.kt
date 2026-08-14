@@ -7,22 +7,18 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
@@ -39,18 +35,6 @@ import com.peartv.launcher.ui.motion.kenBurns
 import com.peartv.launcher.ui.theme.ambientPanelTint
 
 private const val HeroCrossfadeMillis = 400
-
-/** Tier 2's centered app-icon mark (§3.1.2 Template 4) — a fixed size, same reasoning as AppTile's fixed TileWidth (Dimens.kt): simpler than deriving from the hero's own animating height, and this only ever renders while the hero is at/near full expansion. */
-private val Tier2LogoSize = 140.dp
-
-/** Apple's own app-icon corners are a true squircle (continuous-curvature superellipse), not a circular-arc round-rect — Compose has no built-in squircle Shape, and a plain RoundedCornerShape at a squircle-equivalent radius is the standard, already-established approximation elsewhere in this app (AppTile's TileCornerRadius, the tray's TrayCornerRadius, both in Dimens.kt). ~20% of Tier2LogoSize, matching Apple's own icon corner-radius-to-width ratio. */
-private val Tier2LogoCornerRadius = 28.dp
-
-/** User-directed: "a very slight drop shadow for a more 3D look" on Tier 2's centered icon — deliberately modest, not the stronger elevation AppTile's own focus shadow uses (that's focus-driven and animated; this is static decoration). */
-private val Tier2LogoShadowElevation = 8.dp
-
-/** How far Tier 2's sampled fill color is pulled toward the theme's own backgroundColor — confirmed on-device that a raw sampled color (no concept of theme) reads fine in dark theme but as a stark, jarring block in light theme when the source icon happens to be dark (e.g. HBO Max). */
-private const val Tier2FillBackgroundBlend = 0.45f
 
 /**
  * PRODUCT_SPEC.md §3.1.1's hero — backdrop + vignette, observing whichever
@@ -189,55 +173,16 @@ fun HeroBanner(
             } else if (banner != null) {
                 val icon = activeApp?.icon
                 if (icon != null) {
-                    // A flat fill sampled from the icon's own dominant color
-                    // — falls back to a neutral theme color (not the banner)
-                    // if Palette couldn't extract one, same reasoning as
-                    // AppTile's own accentColorArgb fallback. Blended toward
-                    // backgroundColor (the same target the vignette below
-                    // fades to) rather than used raw: a sampled color has no
-                    // concept of theme, so an app with a dark icon (e.g.
-                    // HBO Max, near-black) rendered a stark, jarring block
-                    // against light theme's own light background, confirmed
-                    // on-device — dark theme never surfaced this since a
-                    // dark sample already sits close to a dark background.
-                    // Blending pulls it toward whichever theme is active
-                    // instead of ignoring theme entirely.
-                    val fillColor = activeApp.iconPrimaryColorArgb
-                        ?.let { lerp(Color(it), backgroundColor, Tier2FillBackgroundBlend) }
-                        ?: MaterialTheme.colorScheme.surfaceVariant
-                    // Same glow/shadow color AppTile's own tvOSFocusable
-                    // uses across the whole app (Decisions Log,
-                    // "Focus-shadow color uniformity") — near-white in dark
-                    // theme, near-black in light theme, uniform regardless
-                    // of any per-app accent color. Compose's Modifier.shadow
-                    // defaults to a fixed black ambient/spot color, which
-                    // reads correctly in dark theme but wrong in light theme
-                    // (a black shadow on the light dock's own near-black
-                    // shadow standard would clash — the whole point of that
-                    // Decisions Log entry).
-                    val shadowColor = MaterialTheme.colorScheme.onBackground
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .background(fillColor),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Image(
-                            bitmap = remember(icon) { icon.asImageBitmap() },
-                            contentDescription = null,
-                            contentScale = ContentScale.Fit,
-                            modifier = Modifier
-                                .size(Tier2LogoSize)
-                                .shadow(
-                                    elevation = Tier2LogoShadowElevation,
-                                    shape = RoundedCornerShape(Tier2LogoCornerRadius),
-                                    clip = false,
-                                    ambientColor = shadowColor,
-                                    spotColor = shadowColor,
-                                )
-                                .clip(RoundedCornerShape(Tier2LogoCornerRadius)),
-                        )
-                    }
+                    // Extracted to Tier2IconFill.kt so ContentCarousel's
+                    // PosterBackdrop can reuse this exact treatment for a
+                    // Tier 3 program that resolves to
+                    // ResolvedArtwork.UseTier2Icon — see that composable's
+                    // own doc.
+                    Tier2IconFill(
+                        icon = icon,
+                        iconPrimaryColorArgb = activeApp?.iconPrimaryColorArgb,
+                        modifier = Modifier.fillMaxSize(),
+                    )
                 } else {
                     Image(
                         bitmap = remember(banner) { banner.asImageBitmap() },

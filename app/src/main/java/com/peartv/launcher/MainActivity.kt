@@ -172,6 +172,7 @@ class MainActivity : ComponentActivity() {
                     requestUninstall = RequestUninstallUseCase(app.appLauncher),
                     settingsRepository = app.settingsRepository,
                     tmdbRepository = app.tmdbRepository,
+                    tvdbRepository = app.tvdbRepository,
                     channelsRepository = app.channelsRepository,
                     layoutRepository = app.layoutRepository,
                 ),
@@ -458,13 +459,21 @@ private fun PearTvLauncherApp(
                     }
                 }
                 val tmdbApiKey by settingsViewModel.tmdbApiKey.collectAsStateWithLifecycle()
+                val tvdbApiKey by settingsViewModel.tvdbApiKey.collectAsStateWithLifecycle()
+                val artworkSource by settingsViewModel.artworkSource.collectAsStateWithLifecycle()
+                val hasAnyProviderKey by settingsViewModel.hasAnyProviderKey.collectAsStateWithLifecycle()
                 SettingsScreen(
                     route = settingsBackStack.last(),
                     themeMode = themeMode,
                     tmdbApiKey = tmdbApiKey,
+                    tvdbApiKey = tvdbApiKey,
+                    artworkSource = artworkSource,
+                    hasAnyProviderKey = hasAnyProviderKey,
                     cachedBackdrop = cachedSettingsBackdrop,
                     onThemeModeChange = settingsViewModel::setThemeMode,
                     onTmdbApiKeySave = settingsViewModel::setTmdbApiKey,
+                    onTvdbApiKeySave = settingsViewModel::setTvdbApiKey,
+                    onArtworkSourceChange = settingsViewModel::setArtworkSource,
                     onResetSettings = settingsViewModel::resetSettings,
                     onNavigate = { settingsBackStack.add(it) },
                     onBack = { settingsBackStack.removeAt(settingsBackStack.lastIndex) },

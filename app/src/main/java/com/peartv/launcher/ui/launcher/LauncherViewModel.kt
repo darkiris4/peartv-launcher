@@ -4,19 +4,23 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.peartv.launcher.domain.model.AppChannel
+import com.peartv.launcher.domain.model.ArtworkMatch
 import com.peartv.launcher.domain.model.ChannelProgram
 import com.peartv.launcher.domain.model.GridNode
+import com.peartv.launcher.domain.model.ResolvedArtwork
 import com.peartv.launcher.domain.model.TmdbBackdrop
 import com.peartv.launcher.domain.model.TvApp
 import com.peartv.launcher.domain.model.renumbered
 import com.peartv.launcher.domain.model.stableId
 import com.peartv.launcher.domain.model.withDock
 import com.peartv.launcher.domain.model.withPosition
+import com.peartv.launcher.domain.repository.ArtworkSource
 import com.peartv.launcher.domain.repository.ChannelsRepository
 import com.peartv.launcher.domain.repository.LaunchOrigin
 import com.peartv.launcher.domain.repository.LayoutRepository
 import com.peartv.launcher.domain.repository.SettingsRepository
 import com.peartv.launcher.domain.repository.TmdbRepository
+import com.peartv.launcher.domain.repository.TvdbRepository
 import com.peartv.launcher.domain.usecase.GetInstalledAppsUseCase
 import com.peartv.launcher.domain.usecase.LaunchAppUseCase
 import com.peartv.launcher.domain.usecase.LaunchContentUseCase
@@ -54,6 +58,12 @@ data class PendingMerge(
 /** The small anchored "liquid glass" popover a long-press opens on whatever tile currently has focus — Edit Home Screen / Move to… / Delete App. */
 data class OptionsMenuState(val targetId: String)
 
+/** [LauncherViewModel.resolveArtwork]'s `Automatic` reactive floor — a 720p landscape backdrop reads acceptably full-bleed on real hardware; below this, channel art is treated as "low-res" and a provider match is preferred if one exists. No existing product research pins this exact number; a reasonable starting point, tune by eye if it proves too strict/lax on real channel data. */
+private const val MinAcceptableArtWidth = 1280
+
+/** See [MinAcceptableArtWidth]. */
+private const val MinAcceptableArtHeight = 720
+
 /**
  * Owns the launcher screen's UI state — the installed-app list (via
  * [GetInstalledAppsUseCase]) and, per this task's requirement, which app is
@@ -67,13 +77,16 @@ data class OptionsMenuState(val targetId: String)
  * the initial cold-launch focus request (§1.3) lands.
  *
  * [heroBackdrop] is Tier 1 (§3.1.1/§2.4's three-tier model): non-null only
- * when the focused app is curated ([TvApp.tmdbProviderId] set, §3.2.1) *and*
- * a TMDB API key is configured (§4's settings screen); `null` otherwise,
- * which [HeroBanner] reads as "fall back to Tier 2" (its own local banner
- * art). Carries the trending title alongside the backdrop URL (§3.1.2's
- * restored hero title — the *content's* title, not the app's name; that
- * stays §1.4's per-tile label). `flatMapLatest` cancels any in-flight TMDB
- * fetch the instant focus moves again — necessary since rapid D-pad
+ * when the focused app is curated ([TvApp.tmdbProviderId] set, §3.2.1), a TMDB
+ * API key is configured (§4's settings screen), *and* [ArtworkSource] isn't
+ * [ArtworkSource.Native] — see that enum's own doc for why disabling this
+ * unconditional-until-now lookup is a real behavior change, not a
+ * preservation of what shipped before it existed. `null` otherwise, which
+ * [HeroBanner] reads as "fall back to Tier 2" (its own local banner art).
+ * Carries the trending title alongside the backdrop URL (§3.1.2's restored
+ * hero title — the *content's* title, not the app's name; that stays §1.4's
+ * per-tile label). `flatMapLatest` cancels any in-flight TMDB fetch the
+ * instant focus (or the setting) moves again — necessary since rapid D-pad
  * traversal changes [focusedApp] far faster than a network round-trip
  * resolves, and a stale response landing after focus has already moved on
  * would otherwise flash the wrong app's backdrop.
@@ -98,6 +111,7 @@ class LauncherViewModel(
     private val requestUninstall: RequestUninstallUseCase,
     private val settingsRepository: SettingsRepository,
     private val tmdbRepository: TmdbRepository,
+    private val tvdbRepository: TvdbRepository,
     private val channelsRepository: ChannelsRepository,
     private val layoutRepository: LayoutRepository,
 ) : ViewModel() {
@@ -112,16 +126,22 @@ class LauncherViewModel(
     val focusedItemId: StateFlow<String?> = _focusedItemId.asStateFlow()
 
     val heroBackdrop: StateFlow<TmdbBackdrop?> =
-        combine(focusedApp, settingsRepository.tmdbApiKey) { app, apiKey -> app to apiKey }
-            .flatMapLatest { (app, apiKey) ->
+        combine(focusedApp, settingsRepository.tmdbApiKey, settingsRepository.artworkSource) { app, apiKey, source ->
+            Triple(app, apiKey, source)
+        }
+            .flatMapLatest { (app, apiKey, source) ->
                 val providerId = app?.tmdbProviderId
-                if (providerId == null || apiKey.isNullOrBlank()) {
+                if (source == ArtworkSource.Native || providerId == null || apiKey.isNullOrBlank()) {
                     flowOf(null)
                 } else {
                     flowOf(tmdbRepository.fetchTrendingBackdrop(providerId, apiKey))
                 }
             }
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
+
+    /** `ContentCarousel` reads this directly (not just through [resolveArtwork]'s own internal read) so its `resolvedBackdrops` cache can key on the live value — a setting change needs to invalidate previously-resolved per-program decisions made under the old policy, not just affect newly-resolved ones. Defaults to [ArtworkSource.Native], same as [SettingsRepository]'s own default, so there's no flash of a different policy before the real persisted value loads. */
+    val artworkSource: StateFlow<ArtworkSource> = settingsRepository.artworkSource
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), ArtworkSource.Native)
 
     /**
      * Tier 3 (§2.4/§3.1.1) — real Home Screen Channels data for the focused
@@ -258,19 +278,87 @@ class LauncherViewModel(
     }
 
     /**
-     * Tier 3 poster quality — `ContentCarousel`'s best-effort swap-in of a
-     * real landscape TMDB backdrop for a program whose own published art is
-     * portrait/square (confirmed on-device: Plex's movie-poster-shaped art
-     * badly crops when forced full-bleed). `null` whenever no TMDB key is
-     * configured (§4's settings screen — commonly unset, same as
-     * [heroBackdrop]'s Tier 1) or no confident title match exists; the
-     * caller falls back to that program's own art either way, exactly like
-     * Tier 1 falling back to Tier 2.
+     * Tier 3 poster quality — `ContentCarousel`'s per-program `ArtworkSource`
+     * policy, replacing the old always-portrait-gated
+     * `resolveTmdbBackdropUrl`. [channelArtWidth]/[channelArtHeight] are the
+     * program's own art's *real decoded* pixel dimensions (not just
+     * [ChannelProgram.posterAspectRatio], which the source app self-reports
+     * and which says nothing about resolution) — `ContentCarousel` decodes
+     * these itself before calling this, since this ViewModel has no
+     * Context/Coil dependency by design; `null` when the program has no
+     * [ChannelProgram.posterArtUri] to decode in the first place.
+     *
+     * Decision tree (see [ArtworkSource]'s own doc for the full matrix this
+     * implements):
+     * - [ArtworkSource.Native]: [ResolvedArtwork.UseChannelArt] immediately,
+     *   no network calls at all.
+     * - Both providers are searched (whichever have a configured key). TMDB
+     *   is called *first* — not for final art-quality preference (TVDB's
+     *   `includesText` still wins that, a provider-declared claim harder
+     *   than TMDB's `xx`/`null` language-tagging convention) but because
+     *   TMDB is the one with real watch-provider data to verify a candidate
+     *   is actually available on [com.peartv.launcher.domain.model.TvApp.tmdbProviderId]
+     *   for the app this program belongs to; TVDB then only accepts one of
+     *   its own candidates if it cross-references back to that same
+     *   verified TMDB id, rather than trusting its own less reliable
+     *   ranking (see each repository's own `searchBackdrop` doc — confirmed
+     *   on-device both steps are necessary, not defensive).
+     * - [ArtworkSource.Online]: a confirmed-clean match wins if one exists;
+     *   otherwise any match at all; otherwise [ResolvedArtwork.UseTier2Icon]
+     *   — channel art is *never* shown under this setting, by design.
+     * - [ArtworkSource.Automatic]: a confirmed-clean match wins immediately,
+     *   even if channel art would otherwise pass (an opportunistic upgrade,
+     *   not just a repair). Otherwise, channel art is kept if it clears the
+     *   reactive bar ([LandscapeAspectRatioThreshold] plus a real resolution
+     *   floor); otherwise any provider match; otherwise
+     *   [ResolvedArtwork.UseTier2Icon].
      */
-    suspend fun resolveTmdbBackdropUrl(title: String): String? {
-        val apiKey = settingsRepository.tmdbApiKey.first()?.takeIf { it.isNotBlank() } ?: return null
-        return tmdbRepository.searchBackdrop(title, apiKey)?.backdropUrl
+    suspend fun resolveArtwork(
+        program: ChannelProgram,
+        channelArtWidth: Int?,
+        channelArtHeight: Int?,
+    ): ResolvedArtwork {
+        val source = settingsRepository.artworkSource.first()
+        if (source == ArtworkSource.Native) return ResolvedArtwork.UseChannelArt
+
+        val tvdbKey = settingsRepository.tvdbApiKey.first()?.takeIf { it.isNotBlank() }
+        val tmdbKey = settingsRepository.tmdbApiKey.first()?.takeIf { it.isNotBlank() }
+
+        // TMDB runs *first*, not TVDB, despite TVDB's own `includesText` still
+        // winning the final art-quality preference below — TMDB is the one
+        // with real, populated watch-provider data to actually verify a
+        // match against the app this program's channel belongs to
+        // (`tmdbProviderId`, already curated per-app for Tier 1's own use).
+        // Confirmed on-device this matters: TVDB's own network/company
+        // fields were empty for the exact record its search ranked highest,
+        // so it had nothing reliable of its own to disambiguate a same-named
+        // wrong match with. `expectedProviderId` `null` (app not curated)
+        // degrades both providers back to their prior best-effort,
+        // unverified matching — see each repository's own doc.
+        val expectedProviderId = focusedApp.value?.tmdbProviderId
+        val tmdbMatch = tmdbKey?.let { tmdbRepository.searchBackdrop(program.title, it, expectedProviderId) }
+        val tvdbMatch = tvdbKey?.let { tvdbRepository.searchBackdrop(program.title, it, tmdbMatch?.sourceTmdbId) }
+        val confirmedClean: ArtworkMatch? = listOfNotNull(tvdbMatch, tmdbMatch).firstOrNull { it.isConfirmedClean }
+        val anyMatch = confirmedClean ?: tvdbMatch ?: tmdbMatch
+
+        return if (source == ArtworkSource.Online) {
+            anyMatch?.toResolvedArtwork() ?: ResolvedArtwork.UseTier2Icon
+        } else {
+            // Automatic.
+            if (confirmedClean != null) return confirmedClean.toResolvedArtwork()
+            val channelArtClearsBar = program.posterArtUri != null &&
+                program.posterAspectRatio >= LandscapeAspectRatioThreshold &&
+                channelArtWidth != null && channelArtWidth >= MinAcceptableArtWidth &&
+                channelArtHeight != null && channelArtHeight >= MinAcceptableArtHeight
+            if (channelArtClearsBar) {
+                ResolvedArtwork.UseChannelArt
+            } else {
+                anyMatch?.toResolvedArtwork() ?: ResolvedArtwork.UseTier2Icon
+            }
+        }
     }
+
+    private fun ArtworkMatch.toResolvedArtwork() = ResolvedArtwork.OnlineMatch(backdropUrl, width, height)
 
     // --- Options popover: opened by a single long-press on whatever's focused ---
 
@@ -483,6 +571,7 @@ class LauncherViewModelFactory(
     private val requestUninstall: RequestUninstallUseCase,
     private val settingsRepository: SettingsRepository,
     private val tmdbRepository: TmdbRepository,
+    private val tvdbRepository: TvdbRepository,
     private val channelsRepository: ChannelsRepository,
     private val layoutRepository: LayoutRepository,
 ) : ViewModelProvider.Factory {
@@ -495,6 +584,7 @@ class LauncherViewModelFactory(
             requestUninstall,
             settingsRepository,
             tmdbRepository,
+            tvdbRepository,
             channelsRepository,
             layoutRepository,
         ) as T

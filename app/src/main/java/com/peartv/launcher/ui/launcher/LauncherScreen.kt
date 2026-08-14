@@ -114,6 +114,7 @@ fun LauncherScreen(
     val focusedApp by viewModel.focusedApp.collectAsStateWithLifecycle()
     val focusedItemId by viewModel.focusedItemId.collectAsStateWithLifecycle()
     val heroBackdrop by viewModel.heroBackdrop.collectAsStateWithLifecycle()
+    val artworkSource by viewModel.artworkSource.collectAsStateWithLifecycle()
     val tier3Channels by viewModel.tier3Channels.collectAsStateWithLifecycle()
     val editMode by viewModel.editMode.collectAsStateWithLifecycle()
     val openFolder by viewModel.openFolder.collectAsStateWithLifecycle()
@@ -455,7 +456,9 @@ fun LauncherScreen(
                                 ContentCarousel(
                                     channel = primaryChannel,
                                     onProgramClick = viewModel::onProgramClick,
-                                    resolveBackdropUrl = viewModel::resolveTmdbBackdropUrl,
+                                    resolveArtwork = viewModel::resolveArtwork,
+                                    artworkSource = artworkSource,
+                                    activeApp = focusedApp,
                                     focusRequester = carouselFocusRequester,
                                     upFocusRequester = settingsFocusRequester,
                                     trayClearance = trayClearance,

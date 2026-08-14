@@ -123,6 +123,7 @@ private fun SettingsRowShell(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     description: String? = null,
+    enabled: Boolean = true,
     trailing: @Composable (contentColor: Color) -> Unit = {},
 ) {
     var isFocused by remember { mutableStateOf(false) }
@@ -132,7 +133,12 @@ private fun SettingsRowShell(
         targetValue = if (isFocused) focusedBackground else unfocusedBackground,
         label = "settingsRowBackground",
     )
-    val contentColor = if (isFocused) MaterialTheme.colorScheme.surface else MaterialTheme.colorScheme.onSurface
+    val activeContentColor = if (isFocused) MaterialTheme.colorScheme.surface else MaterialTheme.colorScheme.onSurface
+    // Deliberately more muted than SettingsCategoryRow's own 0.6-alpha value
+    // preview — that's legible-but-secondary text, this needs to read as
+    // genuinely unselectable (e.g. ONLINE/AUTOMATIC with no provider key
+    // configured, ArtworkSourceSettingsContent).
+    val contentColor = if (enabled) activeContentColor else activeContentColor.copy(alpha = SettingsRowDisabledAlpha)
     val setFocusedDescription = LocalFocusedSettingsDescription.current
     val initialFocusGraceActive = LocalSettingsInitialFocusGraceActive.current.value
 
@@ -146,8 +152,9 @@ private fun SettingsRowShell(
             // row, not just whichever one carries [settingsInitialFocus],
             // stays unfocusable until the page's own grace window closes,
             // so real focus has nothing else to fall back to in the
-            // meantime.
-            .focusProperties { canFocus = !initialFocusGraceActive }
+            // meantime. `enabled` is the same idea, just permanent rather
+            // than a startup-only window.
+            .focusProperties { canFocus = enabled && !initialFocusGraceActive }
             .tvOSFocusable(
                 focusedScale = 1f,
                 cornerRadius = SettingsRowCornerRadius,
@@ -156,7 +163,7 @@ private fun SettingsRowShell(
                     isFocused = focused
                     if (focused) setFocusedDescription(description)
                 },
-                onClick = onClick,
+                onClick = { if (enabled) onClick() },
             )
             .padding(horizontal = SettingsRowHorizontalPadding, vertical = SettingsRowVerticalPadding),
     ) {
@@ -171,6 +178,9 @@ private fun SettingsRowShell(
         trailing(contentColor)
     }
 }
+
+/** [SettingsRowShell]'s own content alpha when `enabled = false` — see that param's doc. */
+private const val SettingsRowDisabledAlpha = 0.35f
 
 /**
  * Navigates to a sub-page — label + chevron, optionally with the current
@@ -240,8 +250,9 @@ fun SettingsSelectionRow(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     description: String? = null,
+    enabled: Boolean = true,
 ) {
-    SettingsRowShell(text = text, onClick = onClick, modifier = modifier, description = description) { contentColor ->
+    SettingsRowShell(text = text, onClick = onClick, modifier = modifier, description = description, enabled = enabled) { contentColor ->
         if (selected) {
             Icon(
                 imageVector = Icons.Filled.Check,

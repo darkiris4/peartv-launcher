@@ -1,6 +1,7 @@
 package com.peartv.launcher.data.repository
 
 import android.util.Log
+import com.peartv.launcher.domain.model.ArtworkMatch
 import com.peartv.launcher.domain.model.TmdbBackdrop
 import com.peartv.launcher.domain.repository.TmdbRepository
 import kotlinx.coroutines.Dispatchers
@@ -12,7 +13,9 @@ import org.json.JSONObject
 
 private const val TAG = "TmdbRepository"
 private const val DiscoverMovieUrl = "https://api.themoviedb.org/3/discover/movie"
+private const val SearchTvUrl = "https://api.themoviedb.org/3/search/tv"
 private const val SearchMovieUrl = "https://api.themoviedb.org/3/search/movie"
+private const val ApiBaseUrl = "https://api.themoviedb.org/3"
 private const val BackdropBaseUrl = "https://image.tmdb.org/t/p/w1280"
 
 /**
@@ -34,7 +37,7 @@ class TmdbRepositoryImpl(
 ) : TmdbRepository {
 
     private val cache = mutableMapOf<Int, TmdbBackdrop>()
-    private val searchCache = mutableMapOf<String, TmdbBackdrop>()
+    private val searchCache = mutableMapOf<String, ArtworkMatch>()
 
     override suspend fun fetchTrendingBackdrop(providerId: Int, apiKey: String): TmdbBackdrop? {
         cache[providerId]?.let { return it }
@@ -69,35 +72,141 @@ class TmdbRepositoryImpl(
         }
     }
 
-    override suspend fun searchBackdrop(title: String, apiKey: String): TmdbBackdrop? {
-        val cacheKey = title.trim().lowercase()
+    /**
+     * Searches *both* `/search/tv` and `/search/movie` — confirmed on-device
+     * that movie-only search silently missed all Tier 3 content that's
+     * actually a TV series (e.g. Apple TV+'s "Sugar"/"Lucky"), the common
+     * case. Every candidate from either search is filtered to an exact
+     * (normalized) name/title match first — never a blindly-trusted top
+     * result (see [ArtworkMatch.sourceTmdbId]'s own doc for why that alone
+     * still isn't enough). When [expectedProviderId] is given, the first
+     * exact-title candidate confirmed available on that provider
+     * (`/watch/providers`, US region) wins; otherwise the first exact-title
+     * candidate wins with no such verification (graceful degradation for
+     * apps with no curated `tmdbProviderId`).
+     *
+     * Once a candidate is accepted, a second lookup against its own images
+     * (`/{type}/{id}/images`, filtered to `include_image_language=xx,null` —
+     * the conventional "no language"/untagged bucket uploaders use for
+     * textless art, since neither `/search/tv` nor `/search/movie` expose
+     * per-image language tagging themselves) picks the largest textless
+     * [ArtworkMatch].
+     */
+    override suspend fun searchBackdrop(title: String, apiKey: String, expectedProviderId: Int?): ArtworkMatch? {
+        val cacheKey = "${title.trim().lowercase()}|$expectedProviderId"
         searchCache[cacheKey]?.let { return it }
 
         return withContext(Dispatchers.IO) {
             runCatching {
-                val url = SearchMovieUrl.toHttpUrl().newBuilder()
-                    .addQueryParameter("api_key", apiKey)
-                    .addQueryParameter("query", title)
-                    .build()
-                val request = Request.Builder().url(url).build()
+                val normalizedTitle = title.trim()
+                val candidates = searchExactMatches(SearchTvUrl, apiKey, title, normalizedTitle, "name", "tv") +
+                    searchExactMatches(SearchMovieUrl, apiKey, title, normalizedTitle, "title", "movie")
 
-                httpClient.newCall(request).execute().use { response ->
-                    if (!response.isSuccessful) {
-                        Log.w(TAG, "TMDB search call failed for \"$title\": HTTP ${response.code}")
-                        return@use null
-                    }
-                    val body = response.body?.string() ?: return@use null
-                    val results = JSONObject(body).optJSONArray("results") ?: return@use null
-                    if (results.length() == 0) return@use null
-                    val result = results.getJSONObject(0)
-                    val backdropPath = result.optString("backdrop_path").ifBlank { null } ?: return@use null
-                    val resultTitle = result.optString("title").ifBlank { null } ?: return@use null
-                    TmdbBackdrop(backdropUrl = "$BackdropBaseUrl$backdropPath", title = resultTitle)
-                }
+                val accepted = if (expectedProviderId != null) {
+                    candidates.firstOrNull { (id, type) -> isAvailableOnProvider(id, type, apiKey, expectedProviderId) }
+                } else {
+                    candidates.firstOrNull()
+                } ?: return@runCatching null
+
+                fetchImages(accepted.first, accepted.second, apiKey)
             }.getOrElse {
                 Log.w(TAG, "TMDB search threw for \"$title\"", it)
                 null
             }?.also { searchCache[cacheKey] = it }
+        }
+    }
+
+    /** One `/search/{type}` call, filtered to exact (normalized, case-insensitive) [nameField] matches only — see [searchBackdrop]'s own doc for why a blindly-trusted top result isn't safe here. Returns `(id, type)` pairs, not raw JSON, so [searchBackdrop] can treat TV and movie candidates uniformly. */
+    private fun searchExactMatches(
+        url: String,
+        apiKey: String,
+        rawTitle: String,
+        normalizedTitle: String,
+        nameField: String,
+        type: String,
+    ): List<Pair<Int, String>> {
+        val searchUrl = url.toHttpUrl().newBuilder()
+            .addQueryParameter("api_key", apiKey)
+            .addQueryParameter("query", rawTitle)
+            .build()
+        val request = Request.Builder().url(searchUrl).build()
+        return httpClient.newCall(request).execute().use { response ->
+            if (!response.isSuccessful) {
+                Log.w(TAG, "TMDB $type search call failed for \"$rawTitle\": HTTP ${response.code}")
+                return@use emptyList()
+            }
+            val body = response.body?.string() ?: return@use emptyList()
+            val results = JSONObject(body).optJSONArray("results") ?: return@use emptyList()
+            (0 until results.length())
+                .map { results.getJSONObject(it) }
+                .filter { it.optString(nameField).trim().equals(normalizedTitle, ignoreCase = true) }
+                .mapNotNull { candidate -> candidate.optInt("id", -1).takeIf { it != -1 } }
+                .map { id -> id to type }
+        }
+    }
+
+    /** `/{type}/{id}/watch/providers`, US region — `true` if [providerId] appears in any of the flatrate/ads/free buckets (any of those counts as "available on this app," not just a paid-subscription flatrate listing). */
+    private fun isAvailableOnProvider(id: Int, type: String, apiKey: String, providerId: Int): Boolean {
+        val url = "$ApiBaseUrl/$type/$id/watch/providers".toHttpUrl().newBuilder()
+            .addQueryParameter("api_key", apiKey)
+            .build()
+        val request = Request.Builder().url(url).build()
+        return runCatching {
+            httpClient.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) return@use false
+                val body = response.body?.string() ?: return@use false
+                val us = JSONObject(body).optJSONObject("results")?.optJSONObject("US")
+                us != null && listOf("flatrate", "ads", "free").any { bucket ->
+                    val arr = us.optJSONArray(bucket)
+                    arr != null && (0 until arr.length()).any { i -> arr.getJSONObject(i).optInt("provider_id") == providerId }
+                }
+            }
+        }.getOrElse {
+            Log.w(TAG, "TMDB watch/providers call threw for $type/$id", it)
+            false
+        }
+    }
+
+    /** `/{type}/{id}/images`, filtered to the textless-convention language bucket — see [searchBackdrop]'s own doc. Picks the single largest candidate. */
+    private fun fetchImages(id: Int, type: String, apiKey: String): ArtworkMatch? {
+        val imagesUrl = "$ApiBaseUrl/$type/$id/images".toHttpUrl().newBuilder()
+            .addQueryParameter("api_key", apiKey)
+            .addQueryParameter("include_image_language", "xx,null")
+            .build()
+        val request = Request.Builder().url(imagesUrl).build()
+        return httpClient.newCall(request).execute().use { response ->
+            if (!response.isSuccessful) {
+                Log.w(TAG, "TMDB images call failed for $type/$id: HTTP ${response.code}")
+                return@use null
+            }
+            val body = response.body?.string() ?: return@use null
+            val backdrops = JSONObject(body).optJSONArray("backdrops") ?: return@use null
+            var best: JSONObject? = null
+            var bestRank = -1
+            for (i in 0 until backdrops.length()) {
+                val candidate = backdrops.getJSONObject(i)
+                val width = candidate.optInt("width", 0)
+                val height = candidate.optInt("height", 0)
+                // "Backdrops" are conventionally landscape already, but
+                // ranking orientation explicitly rather than assuming it
+                // costs nothing and matches TVDB's own ranking shape (see
+                // that class's own doc for why it's load-bearing there).
+                val isLandscape = width > height
+                val rank = (if (isLandscape) 1_000_000_000 else 0) + (width * height)
+                if (rank > bestRank) {
+                    bestRank = rank
+                    best = candidate
+                }
+            }
+            val chosen = best ?: return@use null
+            val filePath = chosen.optString("file_path").ifBlank { null } ?: return@use null
+            ArtworkMatch(
+                backdropUrl = "$BackdropBaseUrl$filePath",
+                isConfirmedClean = true,
+                width = chosen.optInt("width", 0),
+                height = chosen.optInt("height", 0),
+                sourceTmdbId = id,
+            )
         }
     }
 }

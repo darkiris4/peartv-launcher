@@ -41,6 +41,7 @@ import androidx.compose.ui.unit.dp
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import com.peartv.launcher.R
+import com.peartv.launcher.domain.repository.ArtworkSource
 import com.peartv.launcher.domain.repository.ThemeMode
 import com.peartv.launcher.ui.focus.FocusGainMillis
 import com.peartv.launcher.ui.focus.FocusLossMillis
@@ -79,6 +80,7 @@ enum class SettingsRoute(val title: String) {
     ContentSources("Content Sources"),
     MetadataProviders("Metadata Providers"),
     TvdbConfiguration("TVDB Configuration"),
+    ArtworkSource("Artwork Source"),
     Screensaver("Screensaver"),
     System("System"),
     About("About PearTV"),
@@ -90,9 +92,14 @@ fun SettingsScreen(
     route: SettingsRoute,
     themeMode: ThemeMode,
     tmdbApiKey: String?,
+    tvdbApiKey: String?,
+    artworkSource: ArtworkSource,
+    hasAnyProviderKey: Boolean,
     cachedBackdrop: BlurredArtwork?,
     onThemeModeChange: (ThemeMode) -> Unit,
     onTmdbApiKeySave: (String) -> Unit,
+    onTvdbApiKeySave: (String) -> Unit,
+    onArtworkSourceChange: (ArtworkSource) -> Unit,
     onResetSettings: () -> Unit,
     onNavigate: (SettingsRoute) -> Unit,
     onBack: () -> Unit,
@@ -337,14 +344,27 @@ fun SettingsScreen(
                             SettingsRoute.TopShelfStyle -> TopShelfStyleSettingsContent()
 
                             SettingsRoute.ContentSources -> ContentSourcesSettingsContent(
+                                artworkSource = artworkSource,
                                 onOpenMetadataProviders = { onNavigate(SettingsRoute.MetadataProviders) },
                                 onOpenTvdbConfiguration = { onNavigate(SettingsRoute.TvdbConfiguration) },
+                                onOpenArtworkSource = { onNavigate(SettingsRoute.ArtworkSource) },
                             )
                             SettingsRoute.MetadataProviders -> MetadataProvidersSettingsContent(
                                 tmdbApiKey = tmdbApiKey,
                                 onTmdbApiKeySave = onTmdbApiKeySave,
                             )
-                            SettingsRoute.TvdbConfiguration -> TvdbConfigurationSettingsContent()
+                            SettingsRoute.TvdbConfiguration -> TvdbConfigurationSettingsContent(
+                                tvdbApiKey = tvdbApiKey,
+                                onTvdbApiKeySave = onTvdbApiKeySave,
+                            )
+                            SettingsRoute.ArtworkSource -> ArtworkSourceSettingsContent(
+                                artworkSource = artworkSource,
+                                onArtworkSourceChange = {
+                                    onArtworkSourceChange(it)
+                                    onBack()
+                                },
+                                hasAnyProviderKey = hasAnyProviderKey,
+                            )
 
                             SettingsRoute.Screensaver -> ScreensaverSettingsContent()
 

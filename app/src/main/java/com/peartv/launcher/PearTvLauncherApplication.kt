@@ -14,6 +14,7 @@ import com.peartv.launcher.data.repository.LauncherAppRepositoryImpl
 import com.peartv.launcher.data.repository.LayoutRepositoryImpl
 import com.peartv.launcher.data.repository.SettingsRepositoryImpl
 import com.peartv.launcher.data.repository.TmdbRepositoryImpl
+import com.peartv.launcher.data.repository.TvdbRepositoryImpl
 import com.peartv.launcher.domain.repository.AppEnrichmentRepository
 import com.peartv.launcher.domain.repository.AppLauncher
 import com.peartv.launcher.domain.repository.ChannelsRepository
@@ -21,6 +22,7 @@ import com.peartv.launcher.domain.repository.LauncherAppRepository
 import com.peartv.launcher.domain.repository.LayoutRepository
 import com.peartv.launcher.domain.repository.SettingsRepository
 import com.peartv.launcher.domain.repository.TmdbRepository
+import com.peartv.launcher.domain.repository.TvdbRepository
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -52,6 +54,7 @@ class PearTvLauncherApplication : Application(), ImageLoaderFactory {
     // hosts (TMDB's API + image CDN).
     private val sharedHttpClient: OkHttpClient by lazy { OkHttpClient() }
     val tmdbRepository: TmdbRepository by lazy { TmdbRepositoryImpl(sharedHttpClient) }
+    val tvdbRepository: TvdbRepository by lazy { TvdbRepositoryImpl(sharedHttpClient) }
     val channelsRepository: ChannelsRepository by lazy { ChannelsRepositoryImpl(this) }
 
     private val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
