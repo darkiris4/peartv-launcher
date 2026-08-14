@@ -16,6 +16,15 @@ val localProperties = Properties().apply {
 fun releaseSigningProperty(key: String): String? =
     (findProperty("peartv.release.$key") as String?) ?: localProperties.getProperty("release.$key")
 
+// versionCode/versionName for release builds come from the git tag (see
+// .github/workflows/release.yml, which parses vMAJOR.MINOR.PATCH into
+// -Ppeartv.versionCode/-Ppeartv.versionName) so cutting a release never
+// depends on remembering to bump a number by hand here. Local/debug builds
+// fall back to these defaults, which only need to track the *current*
+// in-progress version for day-to-day dev builds, not real release history.
+val releaseVersionCode = (findProperty("peartv.versionCode") as String?)?.toInt() ?: 1
+val releaseVersionName = (findProperty("peartv.versionName") as String?) ?: "0.5.0"
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -33,8 +42,8 @@ android {
         // below this floor.
         minSdk = 30
         targetSdk = 35
-        versionCode = 1
-        versionName = "0.5.0"
+        versionCode = releaseVersionCode
+        versionName = releaseVersionName
 
         buildConfigField("String", "TMDB_API_KEY_DEFAULT", "\"${localProperties.getProperty("tmdb.api.key", "")}\"")
         buildConfigField("String", "TVDB_API_KEY_DEFAULT", "\"${localProperties.getProperty("tvdb.api.key", "")}\"")

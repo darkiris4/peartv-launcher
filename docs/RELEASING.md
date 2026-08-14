@@ -43,23 +43,27 @@ with the [Downloader](https://amzn.to/downloaderapp) app on Shield/Fire TV.
 ## Cutting a release
 
 ```bash
-git tag v0.5.0
-git push origin v0.5.0
+git tag v0.5.1
+git push origin v0.5.1
 ```
 
-Pushing a `v*` tag triggers `.github/workflows/release.yml`, which builds
+The tag **must** be `vMAJOR.MINOR.PATCH` (each part 0-99) — the workflow
+parses it to derive both the Android `versionName` (`0.5.1`) and
+`versionCode` (`major*10000 + minor*100 + patch`, e.g. `501`), and fails
+with a clear error if the tag doesn't match. This means you never need to
+hand-edit `versionCode`/`versionName` in `app/build.gradle.kts`: cutting a
+correctly-formatted tag is the only thing that has to happen, and the
+scheme guarantees each release's versionCode is higher than the last as
+long as tags themselves only go up — which is what makes sideloaded
+updates install in place instead of erroring as a downgrade.
+
+Pushing the tag triggers `.github/workflows/release.yml`, which builds
 `assembleRelease`, signs it with the secrets above, and publishes a GitHub
-Release named after the tag with `PearTV-v0.5.0.apk` attached.
+Release named after the tag with `PearTV-v0.5.1.apk` attached.
 
 ## Installing on a device
 
-On the Shield TV Pro (or any Android TV/Fire TV device):
-
-1. Install **Downloader** from the device's app store.
-2. Open it and enter the URL of the `.apk` asset from the
-   [Releases page](https://github.com/darkiris4/peartv-launcher/releases).
-3. Confirm the install prompt (enable "install from unknown sources" for
-   Downloader if asked, once).
-
-A QR code pointing at the same URL (Downloader can generate one, or any QR
-tool) makes remote-typing the link on a TV easier.
+See the [README's "Installing (no Play Store)" section](../README.md#installing-no-play-store)
+for end-user sideload instructions (Downloader app, short code, QR code).
+Updating is the same flow — Android installs a newer same-signature APK
+in place, no uninstall needed.

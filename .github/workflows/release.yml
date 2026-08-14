@@ -21,12 +21,32 @@ jobs:
           distribution: temurin
           java-version: "17"
 
+      - name: Derive versionCode/versionName from tag
+        id: version
+        run: |
+          TAG="${{ github.ref_name }}"
+          if [[ ! "$TAG" =~ ^v([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
+            echo "::error::Tag '$TAG' isn't vMAJOR.MINOR.PATCH (e.g. v1.2.3) -- can't derive an Android versionCode from it."
+            exit 1
+          fi
+          major="${BASH_REMATCH[1]}"
+          minor="${BASH_REMATCH[2]}"
+          patch="${BASH_REMATCH[3]}"
+          if (( minor > 99 || patch > 99 )); then
+            echo "::error::Minor/patch must each fit in 0-99 for the versionCode scheme (major*10000 + minor*100 + patch); got $TAG."
+            exit 1
+          fi
+          echo "code=$(( major * 10000 + minor * 100 + patch ))" >> "$GITHUB_OUTPUT"
+          echo "name=${TAG#v}" >> "$GITHUB_OUTPUT"
+
       - name: Decode release keystore
         run: echo "${{ secrets.PEARTV_KEYSTORE_BASE64 }}" | base64 -d > "$RUNNER_TEMP/release.jks"
 
       - name: Build signed release APK
         run: |
           ./gradlew assembleRelease \
+            -Ppeartv.versionCode="${{ steps.version.outputs.code }}" \
+            -Ppeartv.versionName="${{ steps.version.outputs.name }}" \
             -Ppeartv.release.storeFile="$RUNNER_TEMP/release.jks" \
             -Ppeartv.release.storePassword="${{ secrets.PEARTV_KEYSTORE_PASSWORD }}" \
             -Ppeartv.release.keyAlias="${{ secrets.PEARTV_KEY_ALIAS }}" \
