@@ -1,10 +1,12 @@
 import java.util.Properties
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
-import java.util.Properties
 
-// Release-signing credentials. Local dev reads them from local.properties
-// (gitignored); CI passes them as -P project properties instead (see
+// Local dev secrets — release-signing credentials and TMDB/TVDB default API
+// keys — read from local.properties (gitignored, never committed). CI passes
+// signing credentials as -P project properties instead (see
 // .github/workflows/release.yml) so the keystore never touches the repo.
+// SettingsRepositoryImpl falls back to the baked-in TMDB/TVDB keys only when
+// the user hasn't entered their own; an explicit Settings entry always wins.
 val localProperties = Properties().apply {
     val localPropertiesFile = rootProject.file("local.properties")
     if (localPropertiesFile.exists()) {
@@ -13,17 +15,6 @@ val localProperties = Properties().apply {
 }
 fun releaseSigningProperty(key: String): String? =
     (findProperty("peartv.release.$key") as String?) ?: localProperties.getProperty("release.$key")
-
-// Baked-in default TMDB/TVDB keys — read from local.properties (gitignored,
-// never committed) rather than hardcoded here, since this repo is public.
-// SettingsRepositoryImpl falls back to these only when the user hasn't
-// entered their own key; an explicit Settings entry always wins.
-val localProperties = Properties().apply {
-    val localPropertiesFile = rootProject.file("local.properties")
-    if (localPropertiesFile.exists()) {
-        localPropertiesFile.inputStream().use { load(it) }
-    }
-}
 
 plugins {
     alias(libs.plugins.android.application)
