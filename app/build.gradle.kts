@@ -1,4 +1,17 @@
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+import java.util.Properties
+
+// Release-signing credentials. Local dev reads them from local.properties
+// (gitignored); CI passes them as -P project properties instead (see
+// .github/workflows/release.yml) so the keystore never touches the repo.
+val localProperties = Properties().apply {
+    val localPropertiesFile = rootProject.file("local.properties")
+    if (localPropertiesFile.exists()) {
+        localPropertiesFile.inputStream().use { load(it) }
+    }
+}
+fun releaseSigningProperty(key: String): String? =
+    (findProperty("peartv.release.$key") as String?) ?: localProperties.getProperty("release.$key")
 
 plugins {
     alias(libs.plugins.android.application)
@@ -21,6 +34,18 @@ android {
         versionName = "0.5.0"
     }
 
+    signingConfigs {
+        create("release") {
+            // Left unconfigured (storeFile == null) when no credentials are
+            // supplied, so local `assembleRelease` without a keystore still
+            // succeeds — it just produces an unsigned APK, same as before.
+            releaseSigningProperty("storeFile")?.let { storeFile = file(it) }
+            storePassword = releaseSigningProperty("storePassword")
+            keyAlias = releaseSigningProperty("keyAlias")
+            keyPassword = releaseSigningProperty("keyPassword")
+        }
+    }
+
     buildTypes {
         release {
             // PRODUCT_SPEC.md §2.3 — Baseline Profile + AOT is the primary
@@ -33,6 +58,7 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",
             )
+            signingConfig = signingConfigs.getByName("release").takeIf { it.storeFile != null }
         }
         debug {
             isMinifyEnabled = false

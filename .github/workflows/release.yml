@@ -1,0 +1,44 @@
+name: Release
+
+# Push a tag like "v0.5.0" to build a signed release APK and attach it to a
+# new GitHub Release. See docs/RELEASING.md for the one-time keystore setup.
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Decode release keystore
+        run: echo "${{ secrets.PEARTV_KEYSTORE_BASE64 }}" | base64 -d > "$RUNNER_TEMP/release.jks"
+
+      - name: Build signed release APK
+        run: |
+          ./gradlew assembleRelease \
+            -Ppeartv.release.storeFile="$RUNNER_TEMP/release.jks" \
+            -Ppeartv.release.storePassword="${{ secrets.PEARTV_KEYSTORE_PASSWORD }}" \
+            -Ppeartv.release.keyAlias="${{ secrets.PEARTV_KEY_ALIAS }}" \
+            -Ppeartv.release.keyPassword="${{ secrets.PEARTV_KEY_PASSWORD }}"
+
+      - name: Stage APK for release
+        run: cp app/build/outputs/apk/release/app-release.apk "PearTV-${{ github.ref_name }}.apk"
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${{ github.ref_name }}" "PearTV-${{ github.ref_name }}.apk" \
+            --title "PearTV Launcher ${{ github.ref_name }}" \
+            --generate-notes
