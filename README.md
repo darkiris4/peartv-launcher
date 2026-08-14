@@ -21,6 +21,10 @@ Phase 3, device-verified: both debug and R8-minified release builds succeed, and
 
 See [`PRODUCT_SPEC.md`](./PRODUCT_SPEC.md) for the full product/technical spec, the Decisions Log (every substantive change with on-device verification evidence), and the current list of open questions and known gaps (§5).
 
+## Installing (no Play Store)
+
+Grab the latest signed APK from the [Releases page](https://github.com/darkiris4/peartv-launcher/releases), then sideload it with [Downloader](https://amzn.to/downloaderapp) on your Shield/Fire TV: install Downloader from the device's app store, open it, and enter the `.apk` URL from the release. See [`docs/RELEASING.md`](./docs/RELEASING.md) for how releases are built and signed.
+
 ## Building
 
 Requires JDK 17+ and the Android SDK. The Gradle wrapper is checked in and pinned to Gradle 8.9 / AGP 8.7.3.
