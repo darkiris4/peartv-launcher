@@ -21,6 +21,34 @@ Phase 3, device-verified: both debug and R8-minified release builds succeed, and
 
 See [`PRODUCT_SPEC.md`](./PRODUCT_SPEC.md) for the full product/technical spec, the Decisions Log (every substantive change with on-device verification evidence), and the current list of open questions and known gaps (§5).
 
+## Installing (no Play Store)
+
+PearTV Launcher isn't on the Play Store — sideload the signed APK from GitHub Releases using [Downloader](https://amzn.to/downloaderapp), the standard sideloading app for Fire TV / Android TV.
+
+1. On your Shield/Fire TV, install **Downloader** from the device's app store.
+2. Open Downloader and enter:
+
+   ```
+   8672575
+   ```
+
+   That's a Downloader code — quicker to type on a remote than a full URL. If it ever stops resolving, fall back to entering the URL directly (it always points at the newest release):
+
+   ```
+   https://github.com/darkiris4/peartv-launcher/releases/latest
+   ```
+
+   <p align="left">
+     <img width="160" height="160" alt="QR code linking to the latest PearTV Launcher release" src="./docs/assets/sideload-qr.png" />
+   </p>
+
+   Downloader opens it as a page — tap the `.apk` link on it (e.g. `PearTV-v0.5.0.apk`) to start the download, then install.
+3. If prompted, allow installs from Downloader ("unknown sources") — only needed once.
+
+**Tip:** Downloader also has its own optional URL-shortening feature that turns a saved link into a short numeric code, so you can type a few digits on the remote instead of a full URL — handy if you're setting this up on several devices. That's a feature of the Downloader app/service itself (not something this repo controls), so check Downloader's own site if you want to set one up.
+
+See [`docs/RELEASING.md`](./docs/RELEASING.md) for how releases are built and signed.
+
 ## Building
 
 Requires JDK 17+ and the Android SDK. The Gradle wrapper is checked in and pinned to Gradle 8.9 / AGP 8.7.3.
