@@ -26,7 +26,13 @@ See [`PRODUCT_SPEC.md`](./PRODUCT_SPEC.md) for the full product/technical spec, 
 PearTV Launcher isn't on the Play Store — sideload the signed APK from GitHub Releases using [Downloader](https://amzn.to/downloaderapp), the standard sideloading app for Fire TV / Android TV.
 
 1. On your Shield/Fire TV, install **Downloader** from the device's app store.
-2. Open Downloader and enter this URL (it always points at the newest release):
+2. Open Downloader and enter:
+
+   ```
+   8672575
+   ```
+
+   That's a Downloader code — quicker to type on a remote than a full URL. If it ever stops resolving, fall back to entering the URL directly (it always points at the newest release):
 
    ```
    https://github.com/darkiris4/peartv-launcher/releases/latest
