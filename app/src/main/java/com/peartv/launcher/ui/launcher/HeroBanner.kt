@@ -1,7 +1,10 @@
 package com.peartv.launcher.ui.launcher
 
-import androidx.compose.animation.Crossfade
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
@@ -34,7 +37,7 @@ import com.peartv.launcher.domain.model.TvApp
 import com.peartv.launcher.ui.motion.kenBurns
 import com.peartv.launcher.ui.theme.ambientPanelTint
 
-private const val HeroCrossfadeMillis = 400
+private const val HeroTransitionMillis = 400
 
 /**
  * PRODUCT_SPEC.md §3.1.1's hero — backdrop + vignette, observing whichever
@@ -60,10 +63,14 @@ private const val HeroCrossfadeMillis = 400
  *
  * Deliberately scoped down from the full spec beyond that:
  *
- * - Plain [Crossfade], not §3.1.1's asymmetric staggered-entrance/uniform-
- *   exit reveal choreography. This gets the *structural* separation (hero
- *   owns backdrop, contains no cards) and focus-driven binding right first;
- *   the richer reveal choreography is a follow-up polish pass, not a
+ * - A left-to-right [slideInHorizontally]/[slideOutHorizontally] transition
+ *   (user-directed — new content enters from the left edge, previous
+ *   content continues rightward off-screen; the mirror image of
+ *   `ContentCarousel`'s own right-to-left slide, a deliberately distinct
+ *   choice rather than reused), not §3.1.1's asymmetric staggered-entrance/
+ *   uniform-exit reveal choreography. This gets the *structural* separation
+ *   (hero owns backdrop, contains no cards) and focus-driven binding right
+ *   first; the richer reveal choreography is a follow-up polish pass, not a
  *   correctness requirement.
  * - No literal "mirrored" reflection from §3.1.2 Template 4's description —
  *   scoped down deliberately, same spirit as the rest of this list.
@@ -140,9 +147,12 @@ fun HeroBanner(
             // shifting position as the zoom/pan cycled.
             .clip(RectangleShape),
     ) {
-        Crossfade(
+        AnimatedContent(
             targetState = heroBackdrop?.backdropUrl to activeApp?.banner,
-            animationSpec = tween(HeroCrossfadeMillis),
+            transitionSpec = {
+                slideInHorizontally(animationSpec = tween(HeroTransitionMillis)) { fullWidth -> -fullWidth } togetherWith
+                    slideOutHorizontally(animationSpec = tween(HeroTransitionMillis)) { fullWidth -> fullWidth }
+            },
             label = "heroBackdrop",
         ) { (backdropUrl, banner) ->
             if (backdropUrl != null) {

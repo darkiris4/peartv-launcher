@@ -13,63 +13,96 @@ import org.json.JSONObject
 
 private const val TAG = "TmdbRepository"
 private const val DiscoverMovieUrl = "https://api.themoviedb.org/3/discover/movie"
+private const val DiscoverTvUrl = "https://api.themoviedb.org/3/discover/tv"
 private const val SearchTvUrl = "https://api.themoviedb.org/3/search/tv"
 private const val SearchMovieUrl = "https://api.themoviedb.org/3/search/movie"
 private const val ApiBaseUrl = "https://api.themoviedb.org/3"
 private const val BackdropBaseUrl = "https://image.tmdb.org/t/p/w1280"
 
+private const val TrendingBackdropLimit = 5
+
 /**
- * PRODUCT_SPEC.md §3.1.1 Tier 1 — one-shot TMDB Discover API call (movies
- * only for now; a combined movie+TV query is a follow-up, not a correctness
- * requirement for a first working Tier 1). No Retrofit for a single GET
- * endpoint — a plain `OkHttpClient` + `org.json` (already used the same way
- * in `AppEnrichmentRepositoryImpl`) is proportionate.
+ * PRODUCT_SPEC.md §3.1.1 Tier 1 — one TMDB Discover API call per provider
+ * per content type (movies and TV shows both — the original "movies only
+ * for v1" scoping's noted follow-up, now done), each returning up to
+ * [TrendingBackdropLimit] candidates, merged and re-sorted by TMDB's own
+ * `popularity` score so the final top [TrendingBackdropLimit] reflects
+ * what's actually most popular on that provider *overall*, not "top N
+ * movies" plus "top N shows" concatenated regardless of relative
+ * popularity. `LauncherViewModel.heroBackdrop` rotates through the result
+ * (§3.1.2: "Tier 1's backdrop may rotate... every 5–10s"). No Retrofit for
+ * a single GET endpoint — a plain `OkHttpClient` + `org.json` (already used
+ * the same way in `AppEnrichmentRepositoryImpl`) is proportionate.
  *
  * In-memory cache keyed by `providerId`, successes only: within one launcher
  * session, "what's popular on Hulu right now" doesn't change fast enough to
  * justify a network round-trip on every single focus event for the same
  * curated app. Failures are deliberately never cached — a transient network
  * hiccup should be retried next focus, not permanently disable Tier 1 for
- * that provider until the app restarts.
+ * that provider until the app restarts. Each content type's call fails
+ * independently (its own `runCatching` inside [fetchDiscoverResults], not
+ * one shared around both) — a movies-call error shouldn't discard an
+ * already-succeeded shows result, or vice versa.
  */
 class TmdbRepositoryImpl(
     private val httpClient: OkHttpClient,
 ) : TmdbRepository {
 
-    private val cache = mutableMapOf<Int, TmdbBackdrop>()
+    private val cache = mutableMapOf<Int, List<TmdbBackdrop>>()
     private val searchCache = mutableMapOf<String, ArtworkMatch>()
 
-    override suspend fun fetchTrendingBackdrop(providerId: Int, apiKey: String): TmdbBackdrop? {
+    override suspend fun fetchTrendingBackdrops(providerId: Int, apiKey: String): List<TmdbBackdrop> {
         cache[providerId]?.let { return it }
 
         return withContext(Dispatchers.IO) {
-            runCatching {
-                val url = DiscoverMovieUrl.toHttpUrl().newBuilder()
-                    .addQueryParameter("api_key", apiKey)
-                    .addQueryParameter("with_watch_providers", providerId.toString())
-                    .addQueryParameter("watch_region", "US")
-                    .addQueryParameter("sort_by", "popularity.desc")
-                    .build()
-                val request = Request.Builder().url(url).build()
-
-                httpClient.newCall(request).execute().use { response ->
-                    if (!response.isSuccessful) {
-                        Log.w(TAG, "TMDB discover call failed for provider $providerId: HTTP ${response.code}")
-                        return@use null
-                    }
-                    val body = response.body?.string() ?: return@use null
-                    val results = JSONObject(body).optJSONArray("results") ?: return@use null
-                    if (results.length() == 0) return@use null
-                    val result = results.getJSONObject(0)
-                    val backdropPath = result.optString("backdrop_path").ifBlank { null } ?: return@use null
-                    val title = result.optString("title").ifBlank { null } ?: return@use null
-                    TmdbBackdrop(backdropUrl = "$BackdropBaseUrl$backdropPath", title = title)
-                }
-            }.getOrElse {
-                Log.w(TAG, "TMDB fetch threw for provider $providerId", it)
-                null
-            }?.also { cache[providerId] = it }
+            val movies = fetchDiscoverResults(DiscoverMovieUrl, apiKey, providerId, "title")
+            val shows = fetchDiscoverResults(DiscoverTvUrl, apiKey, providerId, "name")
+            (movies + shows)
+                .sortedByDescending { it.second }
+                .map { it.first }
+                .take(TrendingBackdropLimit)
+                .also { if (it.isNotEmpty()) cache[providerId] = it }
         }
+    }
+
+    /**
+     * One `/discover/{movie,tv}` call — [nameField] is `"title"` for movies,
+     * `"name"` for TV (TMDB's own inconsistent field naming between the two
+     * endpoints). Returns each candidate paired with its raw `popularity`
+     * score, not just a bare [TmdbBackdrop] list, so [fetchTrendingBackdrops]
+     * can merge-sort movies and shows into one combined ranking.
+     */
+    private fun fetchDiscoverResults(
+        url: String,
+        apiKey: String,
+        providerId: Int,
+        nameField: String,
+    ): List<Pair<TmdbBackdrop, Double>> = runCatching {
+        val requestUrl = url.toHttpUrl().newBuilder()
+            .addQueryParameter("api_key", apiKey)
+            .addQueryParameter("with_watch_providers", providerId.toString())
+            .addQueryParameter("watch_region", "US")
+            .addQueryParameter("sort_by", "popularity.desc")
+            .build()
+        val request = Request.Builder().url(requestUrl).build()
+
+        httpClient.newCall(request).execute().use { response ->
+            if (!response.isSuccessful) {
+                Log.w(TAG, "TMDB discover call failed for provider $providerId ($url): HTTP ${response.code}")
+                return@use emptyList()
+            }
+            val body = response.body?.string() ?: return@use emptyList()
+            val results = JSONObject(body).optJSONArray("results") ?: return@use emptyList()
+            (0 until minOf(results.length(), TrendingBackdropLimit)).mapNotNull { i ->
+                val result = results.getJSONObject(i)
+                val backdropPath = result.optString("backdrop_path").ifBlank { null } ?: return@mapNotNull null
+                val name = result.optString(nameField).ifBlank { null } ?: return@mapNotNull null
+                TmdbBackdrop(backdropUrl = "$BackdropBaseUrl$backdropPath", title = name) to result.optDouble("popularity", 0.0)
+            }
+        }
+    }.getOrElse {
+        Log.w(TAG, "TMDB discover call threw for provider $providerId ($url)", it)
+        emptyList()
     }
 
     /**

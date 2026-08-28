@@ -27,6 +27,7 @@ import com.peartv.launcher.domain.usecase.LaunchContentUseCase
 import com.peartv.launcher.domain.usecase.RequestUninstallUseCase
 import com.peartv.launcher.ui.focus.DpadDirection
 import java.util.UUID
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -34,6 +35,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.map
@@ -63,6 +65,9 @@ private const val MinAcceptableArtWidth = 1280
 
 /** See [MinAcceptableArtWidth]. */
 private const val MinAcceptableArtHeight = 720
+
+/** [LauncherViewModel.heroBackdrop]'s Tier 1 rotation interval — PRODUCT_SPEC.md §3.1.2 speced "every 5–10s"; picked the midpoint. */
+private const val HeroBackdropRotationMillis = 7_000L
 
 /**
  * Owns the launcher screen's UI state — the installed-app list (via
@@ -125,6 +130,20 @@ class LauncherViewModel(
     private val _focusedItemId = MutableStateFlow<String?>(null)
     val focusedItemId: StateFlow<String?> = _focusedItemId.asStateFlow()
 
+    /**
+     * PRODUCT_SPEC.md §3.1.2 — Tier 1's backdrop rotates through up to a
+     * handful of currently-popular titles for the focused app's provider,
+     * one [HeroBackdropRotationMillis] hold apiece; `HeroBanner`'s existing
+     * `Crossfade` on this value's `backdropUrl` is what actually renders the
+     * transition, so no change was needed there. Plain `flow { }` + `delay`
+     * inside `flatMapLatest`, not a separate ticker `combine`d in: this way
+     * a focus/key/source change (the outer `flatMapLatest`) cancels an
+     * in-flight rotation loop for free, same protection this section's own
+     * doc already describes for the single-fetch case — a stale rotation
+     * from the *previous* app can't keep emitting after focus has moved on.
+     * A single-result list holds forever (no `delay`/re-emit) rather than
+     * looping to re-emit the same value on a timer for no visible effect.
+     */
     val heroBackdrop: StateFlow<TmdbBackdrop?> =
         combine(focusedApp, settingsRepository.tmdbApiKey, settingsRepository.artworkSource) { app, apiKey, source ->
             Triple(app, apiKey, source)
@@ -134,7 +153,20 @@ class LauncherViewModel(
                 if (source == ArtworkSource.Native || providerId == null || apiKey.isNullOrBlank()) {
                     flowOf(null)
                 } else {
-                    flowOf(tmdbRepository.fetchTrendingBackdrop(providerId, apiKey))
+                    flow<TmdbBackdrop?> {
+                        val backdrops = tmdbRepository.fetchTrendingBackdrops(providerId, apiKey)
+                        if (backdrops.isEmpty()) {
+                            emit(null)
+                            return@flow
+                        }
+                        var index = 0
+                        while (true) {
+                            emit(backdrops[index % backdrops.size])
+                            if (backdrops.size == 1) return@flow
+                            delay(HeroBackdropRotationMillis)
+                            index++
+                        }
+                    }
                 }
             }
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)

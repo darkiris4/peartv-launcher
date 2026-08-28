@@ -34,6 +34,16 @@
     "tmdbProviderId": 9
   },
   {
+    "packageName": "com.amazon.amazonvideo.livingroom",
+    "accentColor": "#000000",
+    "tmdbProviderId": 9
+  },
+  {
+    "packageName": "com.plexapp.android",
+    "accentColor": "#E5A00D",
+    "tmdbProviderId": 538
+  },
+  {
     "packageName": "com.google.android.youtube.tv",
     "accentColor": "#FFFFFF",
     "tmdbProviderId": 192

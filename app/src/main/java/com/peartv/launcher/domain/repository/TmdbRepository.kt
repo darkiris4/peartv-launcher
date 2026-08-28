@@ -13,13 +13,17 @@ import com.peartv.launcher.domain.model.TmdbBackdrop
  */
 interface TmdbRepository {
     /**
-     * @return the most popular movie currently available on [providerId]
-     *   (region fixed to `US` — no per-user region setting exists yet), or
-     *   `null` if the lookup fails for any reason (bad/missing [apiKey],
-     *   network error, no results) — callers treat `null` as "fall through
-     *   to Tier 2," never as an error to surface to the user.
+     * @return up to a handful of the most popular movies *and* TV shows
+     *   currently available on [providerId] (region fixed to `US` — no
+     *   per-user region setting exists yet), merged into one list and
+     *   ordered by popularity across both — callers rotate through these
+     *   for Tier 1's backdrop (PRODUCT_SPEC.md §3.1.2: "Tier 1's backdrop may
+     *   rotate... every 5–10s"). Empty list if the lookup fails for any
+     *   reason (bad/missing [apiKey], network error, no results) — callers
+     *   treat that as "fall through to Tier 2," never as an error to
+     *   surface to the user.
      */
-    suspend fun fetchTrendingBackdrop(providerId: Int, apiKey: String): TmdbBackdrop?
+    suspend fun fetchTrendingBackdrops(providerId: Int, apiKey: String): List<TmdbBackdrop>
 
     /**
      * Tier 3 poster quality — a specific program's [title] searched against
