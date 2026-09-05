@@ -1,6 +1,8 @@
 package com.peartv.launcher.ui.launcher
 
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.LinearOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.StartOffset
 import androidx.compose.animation.core.animateFloat
@@ -12,6 +14,7 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
@@ -28,8 +31,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.BlendMode
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
@@ -47,6 +54,7 @@ import androidx.tv.material3.Text
 import com.peartv.launcher.R
 import com.peartv.launcher.domain.model.TvApp
 import com.peartv.launcher.domain.repository.LaunchOrigin
+import com.peartv.launcher.ui.focus.TvTilt
 import com.peartv.launcher.ui.focus.tvOSFocusable
 import com.peartv.launcher.ui.motion.TvSprings
 import kotlin.math.roundToInt
@@ -54,6 +62,20 @@ import kotlinx.coroutines.launch
 
 /** User-supplied tile art override (`design/settings-{light,dark}.png`) replaces the real Android TV Settings app's own icon/banner — see the `packageName` check below. Not `private`: [HeroBanner]'s Tier 2 fallback needs the same override for its own backdrop (same package, no import needed — same file package). */
 const val SystemSettingsPackageName = "com.android.tv.settings"
+
+/**
+ * §1.2 — how far the tile's own art layer slides *against* the focus tilt,
+ * in px per degree of rotation. Small on purpose: the art should read as a
+ * half-step behind the tile's glass surface, not detached from it.
+ */
+private const val ArtParallaxPxPerDegree = 0.7f
+
+/** Overscan on the parallaxing art so its slide never uncovers the accent plate at an edge. */
+private const val ArtParallaxOverscan = 1.06f
+
+/** One-shot specular highlight that sweeps across a tile as it gains focus — cheap, and the single strongest "this is alive" cue tvOS tiles have. */
+private const val SheenSweepMillis = 520
+private const val SheenAlpha = 0.22f
 
 /**
  * A single grid or top-shelf tile — PRODUCT_SPEC.md §3.1.1's tile spec
@@ -133,6 +155,10 @@ fun AppTile(
     val glowColor = MaterialTheme.colorScheme.onBackground
 
     var isFocused by remember { mutableStateOf(false) }
+    // Current focus tilt, reported out of `tvOSFocusable` so the art layer
+    // below can slide against it for §1.2 parallax depth — the tilt rotation
+    // itself is still applied inside the modifier.
+    val tilt = remember { mutableStateOf(TvTilt(0f, 0f)) }
     // Real tvOS Top Shelf behavior (user-supplied): "The label fades in and
     // out as focus arrives and leaves ... coordinated with the
     // parallax/lift animation on the tile itself" — reusing
@@ -237,6 +263,7 @@ fun AppTile(
                         }
                     },
                     onLongPress = onLongPress,
+                    onTilt = { tilt.value = it },
                     onClick = {
                         val bounds = tileCoordinates?.boundsInWindow()
                         onClick(
@@ -254,6 +281,18 @@ fun AppTile(
                 .background(accentColor),
             contentAlignment = Alignment.Center,
         ) {
+            // §1.2 — the art rides a half-step against the focus tilt inside
+            // an overscanned frame, so a focused tile reads as art set behind
+            // glass rather than a flat sticker. Rest state (tilt at 0) is
+            // just the overscan, visually identical to `fillMaxSize()`.
+            val artModifier = Modifier
+                .fillMaxSize()
+                .graphicsLayer {
+                    translationX = -tilt.value.rotationY * ArtParallaxPxPerDegree * density
+                    translationY = tilt.value.rotationX * ArtParallaxPxPerDegree * density
+                    scaleX = ArtParallaxOverscan
+                    scaleY = ArtParallaxOverscan
+                }
             val banner = app.banner
             if (app.packageName == SystemSettingsPackageName) {
                 // User-supplied override (`design/settings-{light,dark}.png`)
@@ -266,7 +305,7 @@ fun AppTile(
                     painter = painterResource(if (isDarkBackground) R.drawable.settings_tile_dark else R.drawable.settings_tile_light),
                     contentDescription = app.label,
                     contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxSize(),
+                    modifier = artModifier,
                 )
             } else if (banner != null) {
                 val painter: Painter = remember(banner) {
@@ -282,7 +321,7 @@ fun AppTile(
                     // background from ever showing through as a letterbox
                     // gap regardless of the source asset's own ratio.
                     contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxSize(),
+                    modifier = artModifier,
                 )
             } else {
                 Text(
@@ -294,6 +333,8 @@ fun AppTile(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
+
+            TileSheen(focused = isFocused)
         }
 
         // §1.4's per-tile focus label — always composed when [showFocusLabel]
@@ -319,5 +360,44 @@ fun AppTile(
                 )
             }
         }
+    }
+}
+
+/**
+ * A single soft diagonal highlight that sweeps left-to-right across the tile
+ * once, each time it gains focus — additive ([BlendMode.Plus]) so it reads
+ * as light catching the surface, not a white wash. Composed only while a
+ * sweep is actually in flight, so an unfocused (or long-settled) tile pays
+ * nothing for it.
+ */
+@Composable
+private fun BoxScope.TileSheen(focused: Boolean) {
+    val sweep = remember { Animatable(1f) }
+    LaunchedEffect(focused) {
+        if (focused) {
+            sweep.snapTo(0f)
+            sweep.animateTo(1f, tween(SheenSweepMillis, easing = LinearOutSlowInEasing))
+        }
+    }
+    if (sweep.value < 1f) {
+        Box(
+            modifier = Modifier
+                .matchParentSize()
+                .drawBehind {
+                    val p = sweep.value
+                    val band = size.width * 0.45f
+                    val cx = -band + p * (size.width + 2 * band)
+                    drawRect(
+                        brush = Brush.linearGradient(
+                            0f to Color.Transparent,
+                            0.5f to Color.White.copy(alpha = SheenAlpha),
+                            1f to Color.Transparent,
+                            start = Offset(cx - band / 2f, 0f),
+                            end = Offset(cx + band / 2f, size.height),
+                        ),
+                        blendMode = BlendMode.Plus,
+                    )
+                },
+        )
     }
 }

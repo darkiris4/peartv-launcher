@@ -1,6 +1,7 @@
 package com.peartv.launcher.ui.focus
 
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -9,7 +10,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
 import androidx.compose.ui.focus.onFocusChanged
@@ -44,11 +47,30 @@ private const val MaxShadowElevationPx = 48f
  */
 private const val FocusShadowScale = 0.35f
 
+/**
+ * How far an *unfocused* focusable dims while a sibling holds focus —
+ * tvOS's own home-screen behavior (the focused icon reads brighter because
+ * everything around it steps back, not just because it grew). Kept gentle:
+ * on a 10-foot display a heavier value reads as the whole grid going dark
+ * rather than one tile stepping forward. Snapped, not animated, under
+ * reduced motion.
+ */
+private const val UnfocusedDimAlpha = 0.72f
+
 // internal, not private: AppTile's/FolderTile's per-tile focus label (§1.4)
 // reuse these same durations for their own label fade rather than
 // introducing new constants that could drift out of sync with this one.
 internal const val FocusGainMillis = 220
 internal const val FocusLossMillis = 250
+
+/**
+ * The current 3D-tilt of a focusable, reported through [Modifier.tvOSFocusable]'s
+ * `onTilt` callback so a caller ([com.peartv.launcher.ui.launcher.AppTile])
+ * can offset a layer *inside* the tile against it for parallax depth (§1.2)
+ * — the tilt itself stays owned here so it composites on the same
+ * `graphicsLayer` as scale/clip.
+ */
+data class TvTilt(val rotationX: Float, val rotationY: Float)
 
 /**
  * The tvOS-style focus interaction described in PRODUCT_SPEC.md §1.1/§1.2:
@@ -57,16 +79,11 @@ internal const val FocusLossMillis = 250
  * [Modifier.graphicsLayer] block so the whole effect runs on RenderThread,
  * independent of Compose's UI-thread recomposition/layout pass (§2.3).
  *
- * Focus indication is scale + a small elevated shadow ([FocusShadowScale])
- * — no border/ring, no unfocused-dim (removed per the Decisions Log's
- * "§3.1.1 'liquid glass' tray/pill styling — removed" entry, along with
- * every other shadow/tint/blur/dim effect in the app except this one). A
- * ring was tried and removed again: scale/shadow alone were never actually
- * verified insufficient in isolation — the original "can't tell what's
- * focused" report predated a separate fix (the onFocusChanged/focusable
- * ordering bug below), which meant animations weren't firing *at all*, not
- * just reading as too subtle. The ring was added in the same pass as that
- * fix, so this combination was never tested on its own until now.
+ * Focus indication is scale + a directional tilt + a small elevated shadow
+ * ([FocusShadowScale]) + a gentle dim on every *un*focused sibling
+ * ([UnfocusedDimAlpha], [dimUnfocused]) — no border/ring. The dim is tvOS's
+ * own home-screen read (the focused tile stands out because its neighbours
+ * step back, not only because it grew).
  *
  * Deliberately built on [Modifier.composed] rather than a `Modifier.Node`
  * for this scaffolding pass — simpler to get correct first. If profiling
@@ -90,15 +107,24 @@ internal const val FocusLossMillis = 250
  *   without duplicating focus observation elsewhere — see the onFocusChanged/
  *   focusable ordering note below for why this must be the only place that
  *   observes focus state.
+ * @param dimUnfocused whether this element fades to [UnfocusedDimAlpha] while
+ *   it doesn't hold focus. Default on; pass `false` for a lone focusable
+ *   with no peers to contrast against.
+ * @param onTilt, when non-null, is called on every frame of the tilt
+ *   animation with the current [TvTilt] — for a caller that wants to offset
+ *   an inner layer against it for parallax depth (§1.2). The tilt rotation
+ *   itself stays applied here.
  */
 fun Modifier.tvOSFocusable(
     focusedScale: Float = 1.15f,
     pressedScale: Float = 1.08f,
     cornerRadius: Dp = 12.dp,
     glowColor: Color,
+    dimUnfocused: Boolean = true,
     onFocusChange: (Boolean) -> Unit = {},
     onLongPress: (() -> Unit)? = null,
     longPressMillis: Long = 1000L,
+    onTilt: ((TvTilt) -> Unit)? = null,
     onClick: () -> Unit,
 ): Modifier = composed {
     val interactionSource = remember { MutableInteractionSource() }
@@ -123,6 +149,7 @@ fun Modifier.tvOSFocusable(
     val tiltX = remember { Animatable(0f) }
     val tiltY = remember { Animatable(0f) }
     val elevation = remember { Animatable(0f) }
+    val contentDim = remember { Animatable(1f) }
 
     LaunchedEffect(isFocused, isPressed) {
         val targetScale = when {
@@ -130,12 +157,14 @@ fun Modifier.tvOSFocusable(
             isFocused -> focusedScale
             else -> 1f
         }
+        val targetDim = if (isFocused || isPressed || !dimUnfocused) 1f else UnfocusedDimAlpha
         if (reduceMotion) {
             // Snap, not spring — focus still needs *some* visible feedback
             // to stay usable, just without the bounce reduced motion exists
             // to suppress.
             scale.snapTo(targetScale)
             elevation.snapTo(if (isFocused) 1f else 0f)
+            contentDim.snapTo(targetDim)
             return@LaunchedEffect
         }
         val isGaining = isFocused || isPressed
@@ -143,6 +172,19 @@ fun Modifier.tvOSFocusable(
         val elevationSpec = if (isGaining) TvSprings.ElevationFocusGain else TvSprings.ElevationFocusLoss
         launch { scale.animateTo(targetScale, scaleSpec) }
         launch { elevation.animateTo(if (isFocused) 1f else 0f, elevationSpec) }
+        launch {
+            contentDim.animateTo(
+                targetDim,
+                tween(if (isGaining) FocusGainMillis else FocusLossMillis),
+            )
+        }
+    }
+
+    if (onTilt != null) {
+        val currentOnTilt by rememberUpdatedState(onTilt)
+        LaunchedEffect(Unit) {
+            snapshotFlow { TvTilt(tiltX.value, tiltY.value) }.collect { currentOnTilt(it) }
+        }
     }
 
     LaunchedEffect(isFocused) {
@@ -288,6 +330,7 @@ fun Modifier.tvOSFocusable(
             rotationX = tiltX.value
             rotationY = tiltY.value
             cameraDistance = 8f * density
+            alpha = contentDim.value
             this.shape = shape
             clip = true
             shadowElevation = elevation.value * MaxShadowElevationPx * FocusShadowScale
