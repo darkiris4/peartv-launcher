@@ -34,6 +34,7 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
@@ -109,12 +110,9 @@ private enum class CarouselPhase { Poster, Trailer }
 /**
  * `LauncherViewModel.resolveArtwork`'s `Automatic` policy needs the channel
  * poster's *real* decoded pixel dimensions (see that function's own doc for
- * why [ChannelProgram.posterAspectRatio] alone isn't enough) — reuses
- * [BlurredArtwork.kt]'s established `ImageRequest`+`imageLoader` pattern, but
- * lighter: no `allowHardware(false)` (only needed there for `Toolkit.blur`'s
- * CPU pixel access, not relevant here) and reads `Drawable.intrinsicWidth`/
- * `intrinsicHeight` directly rather than casting to `BitmapDrawable`, so
- * Coil's normal (faster) hardware-bitmap decode path is left alone.
+ * why [ChannelProgram.posterAspectRatio] alone isn't enough) — a plain
+ * Coil `ImageRequest`/`imageLoader.execute` reading `Drawable.intrinsicWidth`/
+ * `intrinsicHeight`, leaving Coil's normal hardware-bitmap decode path alone.
  */
 private suspend fun decodeImageDimensions(context: Context, uri: String): Pair<Int, Int>? =
     withContext(Dispatchers.IO) {
@@ -186,13 +184,6 @@ fun ContentCarousel(
     // `TopShelfTrayHeight` anymore — the tray no longer sits a fixed
     // distance above this carousel's own bottom edge.
     trayClearance: Dp = TopShelfTrayHeight,
-    // `TopShelfRow`'s own blurred backdrop feed (`DockBackdrop`,
-    // `BlurredArtwork.kt`) — a sibling in `LauncherScreen`, not a descendant,
-    // so it can't just read this composable's own local state; the currently-
-    // shown poster reports up through this callback instead. Defaults to a
-    // no-op so callers that don't care (none currently, but keeps this
-    // composable usable standalone) don't have to wire it.
-    onDockBackdropChanged: (DockBackdrop?) -> Unit = {},
 ) {
     if (channel.programs.isEmpty()) return
 
@@ -330,20 +321,9 @@ fun ContentCarousel(
             label = "carouselContent",
         ) { (crossfadeIndex, crossfadePhase) ->
             val crossfadeProgram = channel.programs.getOrNull(crossfadeIndex) ?: return@AnimatedContent
-            // Guard against the outgoing branch (still composed here, mid
-            // exit-slide during the transition above) overwriting the
-            // incoming branch's own write — same class of race, same fix,
-            // as `SettingsScreen`'s `LocalFocusedSettingsDescription` guard.
-            val guardedOnDockBackdropChanged: (DockBackdrop?) -> Unit = {
-                if (crossfadeIndex to crossfadePhase == index to phase) onDockBackdropChanged(it)
-            }
             when (crossfadePhase) {
-                CarouselPhase.Poster -> PosterBackdrop(crossfadeProgram, resolvedBackdrops[crossfadeIndex], activeApp, guardedOnDockBackdropChanged)
+                CarouselPhase.Poster -> PosterBackdrop(crossfadeProgram, resolvedBackdrops[crossfadeIndex], activeApp)
                 CarouselPhase.Trailer -> {
-                    // No artwork concept while a trailer plays — falls back
-                    // to `TopShelfRow`'s own plain-translucency default
-                    // rather than leaving the last poster's blur stale.
-                    guardedOnDockBackdropChanged(null)
                     TrailerPlayer(
                         uri = crossfadeProgram.previewVideoUri.orEmpty(),
                         onEnded = { advance(1) },
@@ -445,20 +425,16 @@ fun ContentCarousel(
  * — show the channel's own art immediately, swap to the resolved outcome
  * once it lands, rather than a loading flash.
  *
- * The full-bleed branches also feed [onDockBackdropChanged] — see
- * [DockBackdrop]'s own doc (`BlurredArtwork.kt`) for why `TopShelfRow` needs
- * this reported up rather than reading it locally. [rememberKenBurnsProgress]
- * (not the [Modifier.kenBurns] convenience wrapper) is used explicitly here
- * so the *same* `State<Float>` this composable's own sharp image animates
- * with is exactly what's handed to the dock, not a second independent
- * transition that would drift out of phase with it.
+ * The dock/pill/hero blur is a live `RenderEffect` capture of this
+ * composable's own output now (`BackdropBlur.kt`), so there's no backdrop
+ * artwork to report upward — the sharp art drawn here is simply what those
+ * panels blur.
  */
 @Composable
 private fun PosterBackdrop(
     program: ChannelProgram,
     resolvedArtwork: ResolvedArtwork?,
     activeApp: TvApp?,
-    onDockBackdropChanged: (DockBackdrop?) -> Unit,
 ) {
     val posterUri = program.posterArtUri
     // Ambient Ken Burns motion (ui/motion/KenBurns.kt) on both real-art
@@ -479,8 +455,6 @@ private fun PosterBackdrop(
                 resolvedArtwork.width.toFloat() / resolvedArtwork.height >= LandscapeAspectRatioThreshold
             if (isLandscape) {
                 val progress = rememberKenBurnsProgress()
-                val blurred = rememberBlurredArtwork(resolvedArtwork.url)
-                onDockBackdropChanged(DockBackdrop(blurred, progress))
                 AsyncImage(
                     model = resolvedArtwork.url,
                     contentDescription = program.title,
@@ -490,7 +464,6 @@ private fun PosterBackdrop(
                         .kenBurnsTransform(progress.value),
                 )
             } else {
-                onDockBackdropChanged(null)
                 PortraitPosterBackdrop(
                     resolvedArtwork.url,
                     program.title,
@@ -499,7 +472,6 @@ private fun PosterBackdrop(
             }
         }
         ResolvedArtwork.UseTier2Icon -> {
-            onDockBackdropChanged(null)
             Tier2IconFill(
                 icon = activeApp?.icon,
                 iconPrimaryColorArgb = activeApp?.iconPrimaryColorArgb,
@@ -508,7 +480,6 @@ private fun PosterBackdrop(
         }
         ResolvedArtwork.UseChannelArt, null -> when {
             posterUri == null -> {
-                onDockBackdropChanged(null)
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
@@ -517,8 +488,6 @@ private fun PosterBackdrop(
             }
             program.posterAspectRatio >= LandscapeAspectRatioThreshold -> {
                 val progress = rememberKenBurnsProgress()
-                val blurred = rememberBlurredArtwork(posterUri)
-                onDockBackdropChanged(DockBackdrop(blurred, progress))
                 AsyncImage(
                     model = posterUri,
                     contentDescription = program.title,
@@ -529,7 +498,6 @@ private fun PosterBackdrop(
                 )
             }
             else -> {
-                onDockBackdropChanged(null)
                 PortraitPosterBackdrop(posterUri, program.title, program.posterAspectRatio)
             }
         }
@@ -550,15 +518,23 @@ private fun PosterBackdrop(
  * layer, so the pan/zoom stays within the poster's own real proportions
  * rather than assuming a landscape frame to move around in.
  *
- * Plain translucent scrim behind the inset poster, no blur — this used to
- * blur a recorded copy of the poster itself as the backdrop
- * (`BackdropBlur.kt`'s `blurredBackdrop`); removed, a real blur is being
- * evaluated separately.
+ * A real `RenderEffect` blur of the poster's own art fills the frame behind
+ * the sharp inset (`Modifier.blur`, available on the API-34 floor), under a
+ * translucent scrim for legibility — the frosted-backdrop treatment tvOS
+ * gives portrait art in a landscape hero.
  */
 @Composable
 private fun PortraitPosterBackdrop(posterUri: String, title: String, aspectRatio: Float) {
     val progress = rememberKenBurnsProgress()
     Box(modifier = Modifier.fillMaxSize()) {
+        AsyncImage(
+            model = posterUri,
+            contentDescription = null,
+            contentScale = ContentScale.Crop,
+            modifier = Modifier
+                .fillMaxSize()
+                .blur(DockBlurRadius),
+        )
         Box(
             modifier = Modifier
                 .fillMaxSize()

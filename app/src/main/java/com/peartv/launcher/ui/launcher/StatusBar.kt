@@ -2,7 +2,6 @@ package com.peartv.launcher.ui.launcher
 
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
@@ -22,13 +21,10 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
-import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.layout.positionInWindow
+import androidx.compose.ui.graphics.layer.GraphicsLayer
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.toSize
 import androidx.tv.material3.Icon
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.OutlinedIconButton
@@ -36,7 +32,6 @@ import androidx.tv.material3.OutlinedIconButtonDefaults
 import androidx.tv.material3.Text
 import com.peartv.launcher.ui.focus.FocusGainMillis
 import com.peartv.launcher.ui.focus.FocusLossMillis
-import com.peartv.launcher.ui.motion.kenBurnsTransform
 import kotlinx.coroutines.delay
 import java.time.LocalTime
 import java.time.format.DateTimeFormatter
@@ -46,47 +41,25 @@ private val TimeFormatter: DateTimeFormatter = DateTimeFormatter.ofPattern("h:mm
 /** Minute-precision display doesn't need second-by-second polling. */
 private const val ClockUpdateIntervalMillis = 30_000L
 
-/** Gap between the clock text and the settings gear inside the pill — previously the two sat edge-to-edge, with only the gear's own `OutlinedIconButton` inset providing any breathing room. */
+/** Gap between the clock text and the settings gear inside the pill. */
 private val StatusBarContentSpacing = 12.dp
 
 /**
- * PRODUCT_SPEC.md §3.1.1's clock pill (top-right corner, always visible) —
- * extracted from `peartv` as a reference detail, now an actual Phase 3 build
- * item (Decisions Log: "Status bar"). Same Liquid-Glass-style treatment as
- * `TopShelfRow`'s own dock now — a crop of [dockBackdrop]'s blurred artwork
- * (when there is one), a content-aware [liquidGlassTint], and
- * [LiquidGlassTopHighlight] — user-directed extension of that same panel
- * language to this pill rather than leaving it as the odd one out. Falls
- * back to plain static translucency when [dockBackdrop] is `null` (Tier 1/2,
- * or Tier 3 between poster loads) — see [DockBackdrop]'s own doc
- * (`BlurredArtwork.kt`).
+ * PRODUCT_SPEC.md §3.1.1's clock pill (top-right corner) — same Liquid-Glass
+ * treatment as `TopShelfRow`: a live `RenderEffect` blur of the hero/carousel
+ * content behind it ([backdropLayer], recorded by [BackdropCapture]) plus one
+ * fixed [glassTint] and [LiquidGlassTopHighlight]'s specular top edge.
  *
- * [heroWindowRect] (`LauncherScreen`'s own real window rect for the hero/
- * carousel the sharp poster is `ContentScale.Crop`'d across — reported up
- * from there via `onHeroPositioned` since this pill is a sibling of that
- * whole screen, not a descendant) plus this pill's own real window rect
- * (captured here via `onGloballyPositioned`) feed
- * [positionAwareBackdropCrop] (`GlassPanel.kt`) — without it this pill
- * showed an arbitrary, unpositioned centered slice of the *whole* poster
- * (confirmed user-reported, most obvious here given how small/off-center
- * this pill is) rather than the region actually behind it.
- *
- * Also hosts the settings entry point (§4's narrowly-scoped settings
- * screen) — folded in here rather than left as the bare, unstyled
- * `IconButton` `MainActivity` used before this existed.
- *
- * [settingsFocusRequester] makes the gear a real D-pad destination, not just
- * a click target — user-directed: pressing Up from the dock (through
- * `ContentCarousel`, or directly for apps with no carousel) should reach
- * Settings. Attached to the gear's own `OutlinedIconButton`, whose built-in
- * TV-material click handling already fires [onSettingsClick] on Center/Enter
- * once it's actually focusable — no extra key handling needed here.
+ * Also hosts the settings entry point. [settingsFocusRequester] makes the
+ * gear a real D-pad destination (user-directed: Up from the dock, through
+ * `ContentCarousel` or directly, should reach Settings) — attached to the
+ * gear's own `OutlinedIconButton`, whose built-in TV-material click handling
+ * fires [onSettingsClick] on Center/Enter once it's focusable.
  */
 @Composable
 fun StatusBar(
     onSettingsClick: () -> Unit,
-    dockBackdrop: DockBackdrop?,
-    heroWindowRect: Rect,
+    backdropLayer: GraphicsLayer,
     settingsFocusRequester: FocusRequester,
     modifier: Modifier = Modifier,
 ) {
@@ -98,29 +71,15 @@ fun StatusBar(
         }
     }
 
-    var panelRect by remember { mutableStateOf(Rect.Zero) }
     val shape = RoundedCornerShape(20.dp)
+    val tint = glassTint()
     Box(
         modifier = modifier
             .clip(shape)
-            .onGloballyPositioned { panelRect = Rect(it.positionInWindow(), it.size.toSize()) },
+            .backdropBlur(backdropLayer, tint),
     ) {
-        val artwork = dockBackdrop?.artwork?.value
-        if (artwork != null) {
-            Box(
-                modifier = Modifier
-                    .matchParentSize()
-                    .positionAwareBackdropCrop(
-                        bitmap = artwork.bitmap,
-                        heroRect = { heroWindowRect },
-                        panelRect = { panelRect },
-                    )
-                    .kenBurnsTransform(dockBackdrop.kenBurnsProgress.value),
-            )
-        }
         Row(
             modifier = Modifier
-                .background(liquidGlassTint(artwork))
                 .padding(start = 20.dp, end = 8.dp, top = 4.dp, bottom = 4.dp),
             horizontalArrangement = Arrangement.spacedBy(StatusBarContentSpacing),
             verticalAlignment = Alignment.CenterVertically,

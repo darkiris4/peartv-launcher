@@ -108,12 +108,10 @@ private const val HeroTransitionMillis = 400
  * rather than just cropping smaller, matching the reference's "artwork
  * disappears entirely" collapsed state rather than a cropped sliver.
  *
- * No dock-backdrop blur feed here (unlike `ContentCarousel`'s own poster,
- * see `DockBackdrop`'s doc, `BlurredArtwork.kt`) — Tier 1/2 has no rotating-
- * artwork moment to blur from, and this app's now-deleted `BackdropBlur.kt`
- * (a captured-frame blur) proved unreliable on this project's own reference
- * hardware regardless. `TopShelfRow` simply falls back to plain
- * translucency, same as `StatusBar`, whenever there's nothing to blur.
+ * The dock/pill/hero blur is a live `RenderEffect` capture of this
+ * composable's own rendered output now (`BackdropBlur.kt`) — whatever this
+ * draws, Tier 1 art or the Tier 2 icon-color fill, is simply what those
+ * panels blur; there's no separate backdrop feed to keep fresh.
  */
 @Composable
 fun HeroBanner(

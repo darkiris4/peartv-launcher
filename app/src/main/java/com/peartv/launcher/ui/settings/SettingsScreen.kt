@@ -45,7 +45,7 @@ import com.peartv.launcher.domain.repository.ArtworkSource
 import com.peartv.launcher.domain.repository.ThemeMode
 import com.peartv.launcher.ui.focus.FocusGainMillis
 import com.peartv.launcher.ui.focus.FocusLossMillis
-import com.peartv.launcher.ui.launcher.BlurredArtwork
+import androidx.compose.ui.graphics.ImageBitmap
 import kotlinx.coroutines.delay
 
 /**
@@ -95,7 +95,7 @@ fun SettingsScreen(
     tvdbApiKey: String?,
     artworkSource: ArtworkSource,
     hasAnyProviderKey: Boolean,
-    cachedBackdrop: BlurredArtwork?,
+    cachedBackdrop: ImageBitmap?,
     onThemeModeChange: (ThemeMode) -> Unit,
     onTmdbApiKeySave: (String) -> Unit,
     onTvdbApiKeySave: (String) -> Unit,

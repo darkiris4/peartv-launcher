@@ -87,25 +87,15 @@ val TrayCornerRadius = 24.dp
 val TrayOuterMargin = 32.dp
 
 /**
- * Tray/pill panel fill opacity — shared by `TopShelfRow` and `StatusBar` so
- * both panels read as one consistent translucent material rather than two
- * independently-tuned looks. Reopened at user request (Decisions Log, "Dock/
- * pill backdrop blur") after the Decisions Log's own prior "§3.1.1 'liquid
- * glass' tray/pill styling — removed" entry had settled on fully opaque for
- * both.
- *
- * `0.9f` (nearly opaque) was a compensating value from this app's earlier
- * downscale/upscale "frosted glass" stand-in blur (`BackdropBlur.kt`) — that
- * blur read weak on its own, so the panel leaned on tint instead. Lowered
- * back down now that the backdrop underneath is a real Gaussian blur
- * (`com.google.android.renderscript.Toolkit`, same file) strong enough to
- * actually read through a more translucent panel — the whole point of
- * swapping in a real blur was to be able to show it off. Theme-agnostic:
- * [ambientPanelTint] itself already derives from `colorScheme`, so this
- * reads correctly against both the dark and light schemes without a
- * separate value per theme.
+ * Fixed tray/pill panel fill opacity over the live `RenderEffect` backdrop
+ * blur (`BackdropBlur.kt`'s `glassTint`) — shared by `TopShelfRow` and
+ * `StatusBar` so both panels read as one consistent translucent material.
+ * A real Gaussian blur of the on-screen composite holds contrast on its
+ * own, so this stays low (glass, not frost) and fixed — no luminance
+ * adaptation. Theme-agnostic: `ambientPanelTint()` already derives from
+ * `colorScheme`.
  */
-const val TranslucentPanelAlpha = 0.55f
+const val TranslucentPanelAlpha = 0.5f
 
 /**
  * The tray's full rendered height — tile height + the tray's own vertical
