@@ -86,6 +86,9 @@ val TrayPaddingVertical = 16.dp
 val TrayCornerRadius = 24.dp
 val TrayOuterMargin = 32.dp
 
+/** Soft drop shadow under the glass tray so it reads as floating (user-directed) — subtle, and near-invisible on a dark background by nature. */
+val TrayShadowElevation = 12.dp
+
 /**
  * Tray/pill panel fill opacity over the live `RenderEffect` backdrop blur
  * (`BackdropBlur.kt`'s `glassTint`) — shared by `TopShelfRow` and `StatusBar`
