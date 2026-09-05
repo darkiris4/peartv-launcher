@@ -159,18 +159,10 @@ dependencies {
     implementation(libs.androidx.media3.exoplayer.hls)
     implementation(libs.androidx.media3.ui)
 
-    // Real Gaussian blur for the dock/status-pill/carousel backdrops,
-    // replacing the removed downscale/upscale stand-in (`BackdropBlur.kt`,
-    // deleted). Not `Modifier.blur()`/`RenderEffect` — API 31+, a generation
-    // past this project's confirmed API 30 reference floor. Operates on
-    // Bitmap, not a live Compose GraphicsLayer.
-    implementation(libs.renderscript.toolkit)
-
     // Cold-start splash — installSplashScreen() in MainActivity. Native
-    // SplashScreen is API 31+ only; this project's API 30 floor means it
-    // runs entirely on the library's own compat rendering path, not the
-    // OS's, so Theme.PearTvLauncher.Starting's windowSplashScreen* attrs
-    // (themes.xml) are load-bearing on every device this ships to, not a
-    // progressive-enhancement nicety.
+    // SplashScreen is API 31+; on the API 34 floor this still runs the
+    // library's own compat rendering path on some OEM builds, so
+    // Theme.PearTvLauncher.Starting's windowSplashScreen* attrs (themes.xml)
+    // stay load-bearing rather than being a progressive-enhancement nicety.
     implementation(libs.androidx.core.splashscreen)
 }
