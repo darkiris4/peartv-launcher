@@ -37,10 +37,13 @@ android {
 
     defaultConfig {
         applicationId = "com.peartv.launcher"
-        // PRODUCT_SPEC.md Decisions Log: API 30 (Android 11) is the strict
-        // baseline — matches Shield Experience 9.2+. No back-compat shims
-        // below this floor.
-        minSdk = 30
+        // PRODUCT_SPEC.md Decisions Log: API 34 (Android 14) baseline. The
+        // reference Shield TV Pro runs LineageOS (Android 15); stock Shield
+        // Experience (Android 11) is years past its final OS update and is
+        // no longer a supported target. This floor makes RenderEffect blur,
+        // AGSL runtime shaders, and framework predictive-back animation
+        // callbacks usable without per-API gating.
+        minSdk = 34
         targetSdk = 35
         versionCode = releaseVersionCode
         versionName = releaseVersionName
