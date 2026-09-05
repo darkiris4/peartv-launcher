@@ -36,6 +36,12 @@ private fun gridBackdropTint(): Color {
     return baseTint.copy(alpha = alpha)
 }
 
-/** Heavier than the dock's own tint — a whole page of grid tiles and labels reads over this, so more of the blurred frame has to be covered for legibility. */
+/**
+ * Enough to keep grid tiles/labels legible over the blurred frozen hero, but
+ * light enough that the still clearly reads through. The light value can't
+ * just mirror the dark one — a light tint at the same alpha washes the frame
+ * out to flat (same reason `glassTint` splits), so it goes much sheerer and
+ * leans on the heavy blur itself to keep things calm.
+ */
 private const val GridBackdropTintAlphaDark = 0.62f
-private const val GridBackdropTintAlphaLight = 0.7f
+private const val GridBackdropTintAlphaLight = 0.34f
