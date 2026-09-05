@@ -44,4 +44,4 @@ private fun gridBackdropTint(): Color {
  * leans on the heavy blur itself to keep things calm.
  */
 private const val GridBackdropTintAlphaDark = 0.62f
-private const val GridBackdropTintAlphaLight = 0.34f
+private const val GridBackdropTintAlphaLight = 0.2f

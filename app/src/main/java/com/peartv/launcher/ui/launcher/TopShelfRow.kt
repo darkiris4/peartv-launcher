@@ -14,6 +14,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
@@ -77,6 +78,10 @@ fun TopShelfRow(
         modifier = modifier
             .fillMaxWidth()
             .padding(horizontal = TrayOuterMargin)
+            // A soft drop shadow so the glass tray reads as floating above
+            // the surface behind it (user-directed) — subtle, and naturally
+            // near-invisible on a dark background.
+            .shadow(TrayShadowElevation, shape, clip = false)
             .clip(shape)
             .backdropBlur(backdropLayer, tint, blurRadius),
     ) {
