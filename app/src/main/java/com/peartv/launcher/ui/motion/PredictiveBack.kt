@@ -28,6 +28,14 @@ import kotlinx.coroutines.launch
  * commits the back (`onBack` fires exactly once); cancelling it springs the
  * content back to rest and `onBack` never fires.
  *
+ * [animateCommit] gates the *visual* retreat. It should only be `true` when
+ * this Back press actually leaves the wrapped screen — for a within-screen
+ * navigation (popping one sub-page toward a root that stays on the same
+ * surface) the scale/fade retreat reads as the whole screen flashing/
+ * reloading (user-reported), so `false` makes the modifier behave like a
+ * plain back handler: no transform, `onBack` on completion, nothing on
+ * cancel.
+ *
  * Contract notes (verified against `androidx.activity.compose` 1.9.3 source):
  * - The `onBack` lambda MUST collect the whole progress flow or the library
  *   throws (`check(completed)` in `OnBackInstance`). Every path here collects
@@ -48,10 +56,12 @@ import kotlinx.coroutines.launch
  */
 fun Modifier.predictiveBackTransform(
     enabled: Boolean,
+    animateCommit: Boolean = true,
     onBack: () -> Unit,
 ): Modifier = composed {
     val reduceMotion = LocalReduceMotion.current
     val currentOnBack by rememberUpdatedState(onBack)
+    val currentAnimateCommit by rememberUpdatedState(animateCommit)
 
     val scaleAnim = remember { Animatable(RestScale) }
     val alphaAnim = remember { Animatable(RestAlpha) }
@@ -61,9 +71,10 @@ fun Modifier.predictiveBackTransform(
     val settleScope = rememberCoroutineScope()
 
     PredictiveBackHandler(enabled = enabled) { progress ->
-        if (reduceMotion) {
+        if (reduceMotion || !currentAnimateCommit) {
             // Still must drain the flow; then commit on completion, nothing on
-            // cancel. No animation under reduce-motion.
+            // cancel. No animation — reduce-motion, or a within-screen pop
+            // where the retreat would read as a full-screen reload.
             try {
                 progress.collect { }
                 currentOnBack()

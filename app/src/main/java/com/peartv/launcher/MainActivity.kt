@@ -2,7 +2,9 @@ package com.peartv.launcher
 
 import android.animation.AnimatorSet
 import android.animation.ObjectAnimator
+import android.content.Intent
 import android.content.res.Configuration
+import android.provider.Settings
 import android.os.Bundle
 import android.view.View
 import android.view.animation.AccelerateDecelerateInterpolator
@@ -386,9 +388,19 @@ private fun PearTvLauncherApp(
                         viewModel = launcherViewModel,
                         backdropLayer = backdropLayer,
                         settingsFocusRequester = settingsFocusRequester,
+                        // The dedicated Settings tile opens PearTV's own
+                        // settings; the status-pill gear goes to Android's
+                        // system settings (user-directed swap).
+                        onOpenAppSettings = { screen = Screen.Settings },
                     )
                     StatusBar(
-                        onSettingsClick = { screen = Screen.Settings },
+                        onSettingsClick = {
+                            runCatching {
+                                context.startActivity(
+                                    Intent(Settings.ACTION_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                                )
+                            }
+                        },
                         backdropLayer = backdropLayer,
                         settingsFocusRequester = settingsFocusRequester,
                         modifier = Modifier
@@ -431,7 +443,14 @@ private fun PearTvLauncherApp(
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
-                        .predictiveBackTransform(enabled = true) {
+                        .predictiveBackTransform(
+                            enabled = true,
+                            // Only the Back that actually leaves Settings for
+                            // the launcher gets the scale/fade retreat — a
+                            // sub-page pop stays on this surface, where the
+                            // retreat reads as the whole screen reloading.
+                            animateCommit = settingsBackStack.size == 1,
+                        ) {
                             if (settingsBackStack.size > 1) {
                                 settingsBackStack.removeAt(settingsBackStack.lastIndex)
                             } else {
@@ -469,10 +488,12 @@ private fun LauncherRoute(
     viewModel: LauncherViewModel,
     backdropLayer: GraphicsLayer,
     settingsFocusRequester: FocusRequester,
+    onOpenAppSettings: () -> Unit,
 ) {
     LauncherScreen(
         viewModel = viewModel,
         backdropLayer = backdropLayer,
         settingsFocusRequester = settingsFocusRequester,
+        onOpenAppSettings = onOpenAppSettings,
     )
 }

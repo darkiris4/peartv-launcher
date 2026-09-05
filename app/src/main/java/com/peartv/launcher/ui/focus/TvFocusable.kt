@@ -18,6 +18,7 @@ import androidx.compose.ui.composed
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
@@ -40,12 +41,15 @@ private const val MaxShadowElevationPx = 48f
 
 /**
  * Scales down the focus shadow from [MaxShadowElevationPx]'s original full
- * strength — confirmed on-device (same finding as the dock tray's own
- * shadow, Decisions Log: "§3.1.1 'liquid glass' tray/pill styling —
- * removed") that a shadow this strong reads heavier than the small version
- * does. Applies in both themes.
+ * strength — a shadow at full elevation reads heavier than the small version.
+ * Split by theme: a dark scene shows a cast shadow far more readily than a
+ * light one, so the dark value is pulled well down (user-reported: fine in
+ * light, too strong in dark). Selected via [glowColor]'s own luminance —
+ * that colour is always `onBackground`, near-white in dark theme and
+ * near-black in light, so it doubles as a theme probe without extra plumbing.
  */
-private const val FocusShadowScale = 0.35f
+private const val FocusShadowScaleLight = 0.35f
+private const val FocusShadowScaleDark = 0.16f
 
 /**
  * How far an *unfocused* focusable dims while a sibling holds focus —
@@ -80,10 +84,10 @@ data class TvTilt(val rotationX: Float, val rotationY: Float)
  * independent of Compose's UI-thread recomposition/layout pass (§2.3).
  *
  * Focus indication is scale + a directional tilt + a small elevated shadow
- * ([FocusShadowScale]) + a gentle dim on every *un*focused sibling
- * ([UnfocusedDimAlpha], [dimUnfocused]) — no border/ring. The dim is tvOS's
- * own home-screen read (the focused tile stands out because its neighbours
- * step back, not only because it grew).
+ * ([FocusShadowScaleLight]/[FocusShadowScaleDark]) + a gentle dim on every
+ * *un*focused sibling ([UnfocusedDimAlpha], [dimUnfocused]) — no border/ring.
+ * The dim is tvOS's own home-screen read (the focused tile stands out because
+ * its neighbours step back, not only because it grew).
  *
  * Deliberately built on [Modifier.composed] rather than a `Modifier.Node`
  * for this scaffolding pass — simpler to get correct first. If profiling
@@ -150,6 +154,7 @@ fun Modifier.tvOSFocusable(
     val tiltY = remember { Animatable(0f) }
     val elevation = remember { Animatable(0f) }
     val contentDim = remember { Animatable(1f) }
+    val shadowScale = if (glowColor.luminance() > 0.5f) FocusShadowScaleDark else FocusShadowScaleLight
 
     LaunchedEffect(isFocused, isPressed) {
         val targetScale = when {
@@ -333,7 +338,7 @@ fun Modifier.tvOSFocusable(
             alpha = contentDim.value
             this.shape = shape
             clip = true
-            shadowElevation = elevation.value * MaxShadowElevationPx * FocusShadowScale
+            shadowElevation = elevation.value * MaxShadowElevationPx * shadowScale
             spotShadowColor = glowColor
             ambientShadowColor = glowColor
         }

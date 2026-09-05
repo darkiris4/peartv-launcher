@@ -87,15 +87,15 @@ val TrayCornerRadius = 24.dp
 val TrayOuterMargin = 32.dp
 
 /**
- * Fixed tray/pill panel fill opacity over the live `RenderEffect` backdrop
- * blur (`BackdropBlur.kt`'s `glassTint`) — shared by `TopShelfRow` and
- * `StatusBar` so both panels read as one consistent translucent material.
- * A real Gaussian blur of the on-screen composite holds contrast on its
- * own, so this stays low (glass, not frost) and fixed — no luminance
- * adaptation. Theme-agnostic: `ambientPanelTint()` already derives from
- * `colorScheme`.
+ * Tray/pill panel fill opacity over the live `RenderEffect` backdrop blur
+ * (`BackdropBlur.kt`'s `glassTint`) — shared by `TopShelfRow` and `StatusBar`
+ * so both panels read as one consistent translucent material. Split by theme
+ * (see `glassTint`): a dark tint over a dark blur reads as glass at this
+ * alpha, but a light tint at the same alpha washes the blur flat, so the
+ * light-mode value is *lower*.
  */
 const val TranslucentPanelAlpha = 0.5f
+const val TranslucentPanelAlphaLight = 0.32f
 
 /**
  * The tray's full rendered height — tile height + the tray's own vertical

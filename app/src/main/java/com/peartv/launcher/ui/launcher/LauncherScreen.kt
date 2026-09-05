@@ -95,9 +95,17 @@ fun LauncherScreen(
     viewModel: LauncherViewModel,
     backdropLayer: GraphicsLayer,
     settingsFocusRequester: FocusRequester,
+    onOpenAppSettings: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val dockItems by viewModel.dockItems.collectAsStateWithLifecycle()
+    // The system-settings tile opens PearTV's own settings screen instead of
+    // launching Android's (user-directed swap with the status-pill gear).
+    val handleAppClick: (TvApp, com.peartv.launcher.domain.repository.LaunchOrigin?) -> Unit =
+        { app, origin ->
+            if (app.packageName == SystemSettingsPackageName) onOpenAppSettings()
+            else viewModel.onAppClick(app, origin)
+        }
     val gridItems by viewModel.gridItems.collectAsStateWithLifecycle()
     val focusedApp by viewModel.focusedApp.collectAsStateWithLifecycle()
     val focusedItemId by viewModel.focusedItemId.collectAsStateWithLifecycle()
@@ -427,6 +435,12 @@ fun LauncherScreen(
                 // redraw a live blurred crop of it via `Modifier.backdropBlur`.
                 BackdropCapture(
                     layer = backdropLayer,
+                    // Only record while the hero is essentially fully
+                    // expanded — the moment it starts collapsing its own
+                    // content is already fading toward transparent, so the
+                    // layer freezes on the last *full-opacity* frame, which
+                    // is what the collapsed dock/grid backdrops blur.
+                    capturing = expansionProgress > 0.98f,
                     modifier = Modifier.fillMaxSize(),
                 ) {
                     if (expansionProgress > 0f) {
@@ -478,12 +492,17 @@ fun LauncherScreen(
                 // exact mirror of Layer 1's own `expansionProgress` alpha —
                 // so the two cross-dissolve into each other rather than one
                 // snapping in where the other leaves off.
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .alpha(1f - expansionProgress),
-                ) {
-                    GridBackdrop(modifier = Modifier.fillMaxSize())
+                if (expansionProgress < 1f) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .alpha(1f - expansionProgress),
+                    ) {
+                        GridBackdrop(
+                            backdropLayer = backdropLayer,
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                    }
                 }
 
                 // Layer 3 (middle): grid, slides up from fully below the
@@ -502,7 +521,7 @@ fun LauncherScreen(
                     ) {
                         AppGrid(
                             items = gridItems,
-                            onAppClick = viewModel::onAppClick,
+                            onAppClick = handleAppClick,
                             onFolderClick = { id, rect ->
                                 openingFolderBounds = rect
                                 viewModel.openFolder(id)
@@ -533,8 +552,11 @@ fun LauncherScreen(
                 if (dockItems.isNotEmpty()) {
                     TopShelfRow(
                         apps = dockApps,
-                        onAppClick = viewModel::onAppClick,
+                        onAppClick = handleAppClick,
                         backdropLayer = backdropLayer,
+                        // Light blur over the live hero when expanded; heavy
+                        // over the frozen still once collapsed (user-directed).
+                        blurRadius = lerp(CollapsedBlurRadius, DockBlurRadius, expansionProgress),
                         // User-directed: Up from a dock tile should always
                         // reach something — the carousel when this app has
                         // one, straight to Settings otherwise (there's no
@@ -585,7 +607,7 @@ fun LauncherScreen(
                     },
                     enterRenameMode = openFolderRenameMode,
                     onRename = { viewModel.renameFolder(folderRenderValue.id, it) },
-                    onAppClick = viewModel::onAppClick,
+                    onAppClick = handleAppClick,
                     onAppFocused = viewModel::onAppFocused,
                     optionsMenuTargetId = optionsMenu?.targetId,
                     onOpenOptionsMenu = viewModel::openOptionsMenu,
