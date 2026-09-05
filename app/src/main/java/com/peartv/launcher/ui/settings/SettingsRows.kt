@@ -29,7 +29,6 @@ import androidx.tv.material3.Icon
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Switch
 import androidx.tv.material3.Text
-import com.peartv.launcher.ui.focus.FocusGainMillis
 import com.peartv.launcher.ui.focus.tvOSFocusable
 import com.peartv.launcher.ui.theme.settingsRowFill
 
@@ -131,12 +130,12 @@ private fun SettingsRowShell(
     var isFocused by remember { mutableStateOf(false) }
     val focusedBackground = MaterialTheme.colorScheme.onSurface
     val unfocusedBackground = MaterialTheme.settingsRowFill()
-    // Snappy, fixed duration — the default spring lingered long enough that a
-    // fast scroll left two or three rows still visibly mid-fade behind the
-    // cursor (user-reported "trailing effect").
+    // Near-instant — the focus pill should feel like it jumps between rows,
+    // tvOS-style. Any lingering fade shows as a "trail" of half-lit rows
+    // behind a fast scroll (user-reported).
     val backgroundColor by animateColorAsState(
         targetValue = if (isFocused) focusedBackground else unfocusedBackground,
-        animationSpec = tween(FocusGainMillis),
+        animationSpec = tween(SettingsRowFocusMillis),
         label = "settingsRowBackground",
     )
     val activeContentColor = if (isFocused) MaterialTheme.colorScheme.surface else MaterialTheme.colorScheme.onSurface
@@ -166,9 +165,11 @@ private fun SettingsRowShell(
                 cornerRadius = SettingsRowCornerRadius,
                 glowColor = MaterialTheme.colorScheme.onBackground,
                 // A vertical text list — the focus pill already carries the
-                // selection; dimming the other rows just adds fade animations
-                // that pile up and trail during a fast scroll.
+                // selection; dimming the other rows, or lifting a shadow on
+                // the focused one, just adds fade animations that pile up and
+                // trail during a fast scroll.
                 dimUnfocused = false,
+                elevateOnFocus = false,
                 onFocusChange = { focused ->
                     isFocused = focused
                     if (focused) setFocusedDescription(description)
@@ -312,6 +313,9 @@ fun SettingsInfoRow(
         )
     }
 }
+
+/** Focus-pill background swap duration — deliberately tiny (see [SettingsRowShell]). */
+private const val SettingsRowFocusMillis = 70
 
 val SettingsRowCornerRadius = 28.dp
 val SettingsRowHorizontalPadding = 28.dp

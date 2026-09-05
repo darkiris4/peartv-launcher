@@ -30,8 +30,13 @@ import androidx.tv.material3.MaterialTheme
 import com.peartv.launcher.ui.theme.ambientPanelTint
 import kotlin.math.roundToInt
 
-/** Live-glass blur radius for the dock and status pill while the hero is expanded — light enough to still make out the art. */
-val DockBlurRadius: Dp = 40.dp
+/**
+ * Blur radius for the dock and status pill while the hero is expanded. Kept
+ * small — Apple's Liquid Glass softens what's behind it, it doesn't obliterate
+ * it; a large radius plus any tint reads as a heavy frosted slab rather than
+ * glass (user-reported "way too strong").
+ */
+val DockBlurRadius: Dp = 14.dp
 
 /** Heavier radius once the hero has collapsed: the dock/grid then sit over a *frozen* still of the last hero frame (see [BackdropCapture]), which should read as an abstract wash rather than a recognisable image. */
 val CollapsedBlurRadius: Dp = 72.dp

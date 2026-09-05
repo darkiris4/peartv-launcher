@@ -94,8 +94,8 @@ val TrayOuterMargin = 32.dp
  * alpha, but a light tint at the same alpha washes the blur flat, so the
  * light-mode value is *lower*.
  */
-const val TranslucentPanelAlpha = 0.5f
-const val TranslucentPanelAlphaLight = 0.32f
+const val TranslucentPanelAlpha = 0.42f
+const val TranslucentPanelAlphaLight = 0.16f
 
 /**
  * The tray's full rendered height — tile height + the tray's own vertical

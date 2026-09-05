@@ -114,6 +114,10 @@ data class TvTilt(val rotationX: Float, val rotationY: Float)
  * @param dimUnfocused whether this element fades to [UnfocusedDimAlpha] while
  *   it doesn't hold focus. Default on; pass `false` for a lone focusable
  *   with no peers to contrast against.
+ * @param elevateOnFocus whether the focused element casts a lifted shadow.
+ *   Default on for tiles; pass `false` for a flat full-width row (a Settings
+ *   list) where the shadow adds nothing and its spring lingers behind a fast
+ *   scroll.
  * @param onTilt, when non-null, is called on every frame of the tilt
  *   animation with the current [TvTilt] — for a caller that wants to offset
  *   an inner layer against it for parallax depth (§1.2). The tilt rotation
@@ -125,6 +129,7 @@ fun Modifier.tvOSFocusable(
     cornerRadius: Dp = 12.dp,
     glowColor: Color,
     dimUnfocused: Boolean = true,
+    elevateOnFocus: Boolean = true,
     onFocusChange: (Boolean) -> Unit = {},
     onLongPress: (() -> Unit)? = null,
     longPressMillis: Long = 1000L,
@@ -154,7 +159,11 @@ fun Modifier.tvOSFocusable(
     val tiltY = remember { Animatable(0f) }
     val elevation = remember { Animatable(0f) }
     val contentDim = remember { Animatable(1f) }
-    val shadowScale = if (glowColor.luminance() > 0.5f) FocusShadowScaleDark else FocusShadowScaleLight
+    val shadowScale = when {
+        !elevateOnFocus -> 0f
+        glowColor.luminance() > 0.5f -> FocusShadowScaleDark
+        else -> FocusShadowScaleLight
+    }
 
     LaunchedEffect(isFocused, isPressed) {
         val targetScale = when {
