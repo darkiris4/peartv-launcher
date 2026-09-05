@@ -68,6 +68,7 @@ fun TopShelfRow(
     onOpenOptionsMenu: () -> Unit = {},
     onTilePositioned: (LayoutCoordinates) -> Unit = {},
     tileWidth: Dp = TileWidth,
+    blurRadius: Dp = DockBlurRadius,
 ) {
     val shape = RoundedCornerShape(TrayCornerRadius)
     val tint = glassTint()
@@ -77,7 +78,7 @@ fun TopShelfRow(
             .fillMaxWidth()
             .padding(horizontal = TrayOuterMargin)
             .clip(shape)
-            .backdropBlur(backdropLayer, tint),
+            .backdropBlur(backdropLayer, tint, blurRadius),
     ) {
         Row(
             modifier = Modifier

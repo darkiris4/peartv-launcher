@@ -1,32 +1,30 @@
 package com.peartv.launcher.ui.launcher
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.layer.GraphicsLayer
 import androidx.compose.ui.graphics.luminance
 import androidx.tv.material3.MaterialTheme
 import com.peartv.launcher.ui.theme.ambientPanelTint
 
 /**
  * The app grid's own background once the hero collapses (grid gains focus) —
- * a flat, theme-aware lifted tint over `LauncherScreen`'s own
- * `ambientBackground()`. Earlier versions carried a frozen, position-cropped
- * blur of the last hero artwork here; that was dropped with the move to a
- * live `RenderEffect` capture (`BackdropBlur.kt`) — the blurred-hero-behind-
- * the-grid effect was only ever visible for the ~350ms collapse transition
- * and didn't justify a permanent full-screen blur pass. The grid reads for
- * long stretches, so a calm flat backdrop suits it better than the dock's
- * live glass anyway.
+ * a heavy `RenderEffect` blur of the frozen last hero frame ([backdropLayer],
+ * which stops recording when the hero collapses, see [BackdropCapture]) under
+ * a theme-aware lifted tint, so the collapsed home surface still shows a soft
+ * ghost of the last image the hero was showing rather than a flat fill
+ * (user-directed). On a cold start with no hero frame captured yet the layer
+ * blurs to nothing and the tint alone covers it.
  */
 @Composable
 fun GridBackdrop(
+    backdropLayer: GraphicsLayer,
     modifier: Modifier = Modifier,
 ) {
     Box(
-        modifier = modifier.background(gridBackdropTint()),
+        modifier = modifier.backdropBlur(backdropLayer, gridBackdropTint(), CollapsedBlurRadius),
     )
 }
 
@@ -38,5 +36,6 @@ private fun gridBackdropTint(): Color {
     return baseTint.copy(alpha = alpha)
 }
 
-private const val GridBackdropTintAlphaDark = 0.45f
-private const val GridBackdropTintAlphaLight = 0.55f
+/** Heavier than the dock's own tint — a whole page of grid tiles and labels reads over this, so more of the blurred frame has to be covered for legibility. */
+private const val GridBackdropTintAlphaDark = 0.62f
+private const val GridBackdropTintAlphaLight = 0.7f

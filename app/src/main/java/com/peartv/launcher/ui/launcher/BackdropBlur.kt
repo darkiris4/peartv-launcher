@@ -14,6 +14,7 @@ import androidx.compose.ui.graphics.TileMode
 import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.layer.GraphicsLayer
 import androidx.compose.ui.graphics.layer.drawLayer
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.rememberGraphicsLayer
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInWindow
@@ -29,8 +30,11 @@ import androidx.tv.material3.MaterialTheme
 import com.peartv.launcher.ui.theme.ambientPanelTint
 import kotlin.math.roundToInt
 
-/** Live-glass blur radius for the dock and the status pill. */
+/** Live-glass blur radius for the dock and status pill while the hero is expanded — light enough to still make out the art. */
 val DockBlurRadius: Dp = 40.dp
+
+/** Heavier radius once the hero has collapsed: the dock/grid then sit over a *frozen* still of the last hero frame (see [BackdropCapture]), which should read as an abstract wash rather than a recognisable image. */
+val CollapsedBlurRadius: Dp = 72.dp
 
 /**
  * Heavier blur for the full-screen Settings backdrop — a still snapshot with
@@ -57,17 +61,32 @@ val SettingsBlurRadius: Dp = 56.dp
  * chrome that reads the capture is drawn afterwards and outside it, so there
  * is no layer drawing itself, and the grid/dock tiles behind the panels
  * aren't blur-worthy content anyway.
+ *
+ * [capturing] is false once the hero has fully collapsed off screen (its
+ * [content] is empty by then). Recording stops, so [layer] keeps the last
+ * frame it saw — the dock/grid backdrops then blur that frozen still rather
+ * than an empty layer, which is what lets the collapsed home surface still
+ * show a heavily-blurred ghost of the last hero image beneath it.
  */
 @Composable
 fun BackdropCapture(
     layer: GraphicsLayer,
+    capturing: Boolean,
     modifier: Modifier = Modifier,
     content: @Composable BoxScope.() -> Unit,
 ) {
     Box(
         modifier = modifier.drawWithContent {
-            layer.record { this@drawWithContent.drawContent() }
-            drawLayer(layer)
+            if (capturing) {
+                // Render the hero *through* the layer, which also leaves the
+                // layer holding this frame for the blur consumers.
+                layer.record { this@drawWithContent.drawContent() }
+                drawLayer(layer)
+            } else {
+                // Still fading out — draw it live so the collapse cross-
+                // dissolve is visible; the layer keeps its last full frame.
+                drawContent()
+            }
         },
         content = content,
     )
@@ -114,11 +133,18 @@ fun Modifier.backdropBlur(
 }
 
 /**
- * Fixed translucent material tint for glass chrome drawn over [backdropBlur].
- * The earlier luminance-adaptive tint compensated for a weak downscale/
- * upscale blur; a real Gaussian blur of the live backdrop holds contrast on
- * its own, so this is one fixed value per theme, like a platform material.
+ * Translucent material tint for glass chrome drawn over [backdropBlur].
+ *
+ * Split by theme (user-reported: the panels read as blurred in dark mode but
+ * flat in light mode). A dark tint over a dark blur reads as frosted glass at
+ * a fairly high alpha; a *light* tint at the same alpha just washes the blur
+ * out to a flat pane. So the light-mode value goes the other way — more
+ * transparent — and leans on the blur itself plus the panel's own top-edge
+ * highlight to define the surface.
  */
 @Composable
-fun glassTint(alpha: Float = TranslucentPanelAlpha): Color =
-    MaterialTheme.ambientPanelTint().copy(alpha = alpha)
+fun glassTint(): Color {
+    val isDark = MaterialTheme.colorScheme.background.luminance() < 0.5f
+    return MaterialTheme.ambientPanelTint()
+        .copy(alpha = if (isDark) TranslucentPanelAlpha else TranslucentPanelAlphaLight)
+}

@@ -1,6 +1,7 @@
 package com.peartv.launcher.ui.settings
 
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -28,6 +29,7 @@ import androidx.tv.material3.Icon
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Switch
 import androidx.tv.material3.Text
+import com.peartv.launcher.ui.focus.FocusGainMillis
 import com.peartv.launcher.ui.focus.tvOSFocusable
 import com.peartv.launcher.ui.theme.settingsRowFill
 
@@ -129,8 +131,12 @@ private fun SettingsRowShell(
     var isFocused by remember { mutableStateOf(false) }
     val focusedBackground = MaterialTheme.colorScheme.onSurface
     val unfocusedBackground = MaterialTheme.settingsRowFill()
+    // Snappy, fixed duration — the default spring lingered long enough that a
+    // fast scroll left two or three rows still visibly mid-fade behind the
+    // cursor (user-reported "trailing effect").
     val backgroundColor by animateColorAsState(
         targetValue = if (isFocused) focusedBackground else unfocusedBackground,
+        animationSpec = tween(FocusGainMillis),
         label = "settingsRowBackground",
     )
     val activeContentColor = if (isFocused) MaterialTheme.colorScheme.surface else MaterialTheme.colorScheme.onSurface
@@ -159,6 +165,10 @@ private fun SettingsRowShell(
                 focusedScale = 1f,
                 cornerRadius = SettingsRowCornerRadius,
                 glowColor = MaterialTheme.colorScheme.onBackground,
+                // A vertical text list — the focus pill already carries the
+                // selection; dimming the other rows just adds fade animations
+                // that pile up and trail during a fast scroll.
+                dimUnfocused = false,
                 onFocusChange = { focused ->
                     isFocused = focused
                     if (focused) setFocusedDescription(description)
@@ -171,7 +181,7 @@ private fun SettingsRowShell(
             text = text,
             color = contentColor,
             style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.Light,
+            fontWeight = FontWeight.Normal,
         )
         Spacer(modifier = Modifier.width(SettingsRowTrailingGap))
         Spacer(modifier = Modifier.weight(1f))
@@ -291,7 +301,7 @@ fun SettingsInfoRow(
             text = text,
             color = MaterialTheme.colorScheme.onBackground,
             style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.Light,
+            fontWeight = FontWeight.Normal,
         )
         Spacer(modifier = Modifier.width(SettingsRowTrailingGap))
         Spacer(modifier = Modifier.weight(1f))
