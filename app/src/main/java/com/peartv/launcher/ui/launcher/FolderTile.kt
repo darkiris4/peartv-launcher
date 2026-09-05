@@ -34,11 +34,13 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.painter.BitmapPainter
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -64,7 +66,7 @@ import com.peartv.launcher.ui.motion.TvSprings
 @Composable
 fun FolderTile(
     folder: LauncherGridItem.FolderItem,
-    onClick: () -> Unit,
+    onClick: (Rect?) -> Unit,
     modifier: Modifier = Modifier,
     onFocus: () -> Unit = {},
     onLongPress: (() -> Unit)? = null,
@@ -119,6 +121,10 @@ fun FolderTile(
         if (isActiveDrag) tileFocusRequester.requestFocus()
     }
 
+    // This tile's own window bounds at click time, so the open-folder modal
+    // can spring out of it (mirrors AppTile's LaunchOrigin capture).
+    var tileCoordinates by remember { mutableStateOf<LayoutCoordinates?>(null) }
+
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         modifier = Modifier.graphicsLayer {
@@ -130,7 +136,10 @@ fun FolderTile(
     ) {
         Box(
             modifier = modifier
-                .onGloballyPositioned(onPositioned)
+                .onGloballyPositioned {
+                    tileCoordinates = it
+                    onPositioned(it)
+                }
                 .focusRequester(tileFocusRequester)
                 .tvOSFocusable(
                     focusedScale = if (isActiveDrag) 1f else 1.15f,
@@ -141,7 +150,7 @@ fun FolderTile(
                         if (focused) onFocus()
                     },
                     onLongPress = onLongPress,
-                    onClick = onClick,
+                    onClick = { onClick(tileCoordinates?.boundsInWindow()) },
                 )
                 .clip(RoundedCornerShape(TileCornerRadius))
                 .background(MaterialTheme.colorScheme.surfaceVariant),

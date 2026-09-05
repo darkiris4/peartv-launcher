@@ -71,4 +71,21 @@ object TvSprings {
         dampingRatio = 1.0f,
         stiffness = 350f,
     )
+
+    /**
+     * A modal springing open from the on-screen element it was launched from
+     * — the open-folder transition, matching the system
+     * `ActivityOptions.makeScaleUpAnimation` app-launch feel (a ~300ms
+     * decelerate zoom, no overshoot).
+     */
+    val RevealOpen: SpringSpec<Float> = spring(
+        dampingRatio = 0.85f,
+        stiffness = 500f,
+    )
+
+    /** The reverse — snappier, so backing out never feels slower than going in. */
+    val RevealClose: SpringSpec<Float> = spring(
+        dampingRatio = 1.0f,
+        stiffness = 800f,
+    )
 }

@@ -13,6 +13,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.unit.Dp
 import com.peartv.launcher.domain.model.TvApp
@@ -79,7 +80,7 @@ import com.peartv.launcher.domain.repository.LaunchOrigin
 fun AppGrid(
     items: List<LauncherGridItem>,
     onAppClick: (TvApp, LaunchOrigin?) -> Unit,
-    onFolderClick: (String) -> Unit,
+    onFolderClick: (String, Rect?) -> Unit,
     modifier: Modifier = Modifier,
     onAppFocused: (TvApp) -> Unit = {},
     onFolderFocused: (String) -> Unit = {},
@@ -143,7 +144,7 @@ fun AppGrid(
                 )
                 is LauncherGridItem.FolderItem -> FolderTile(
                     folder = item,
-                    onClick = { if (!editMode.isActive) onFolderClick(item.id) },
+                    onClick = { rect -> if (!editMode.isActive) onFolderClick(item.id, rect) },
                     onFocus = { onFolderFocused(item.id) },
                     onLongPress = longPress,
                     isEditMode = editMode.isActive,

@@ -7,7 +7,6 @@ import android.os.Bundle
 import android.view.View
 import android.view.animation.AccelerateDecelerateInterpolator
 import androidx.activity.ComponentActivity
-import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.animation.AnimatedContent
@@ -57,6 +56,7 @@ import com.peartv.launcher.ui.launcher.LauncherViewModelFactory
 import com.peartv.launcher.ui.launcher.StatusBar
 import com.peartv.launcher.ui.motion.LocalReduceMotion
 import com.peartv.launcher.ui.motion.isReduceMotionEnabled
+import com.peartv.launcher.ui.motion.predictiveBackTransform
 import com.peartv.launcher.ui.settings.SettingsRoute
 import com.peartv.launcher.ui.settings.SettingsScreen
 import com.peartv.launcher.ui.settings.SettingsViewModel
@@ -402,47 +402,60 @@ private fun PearTvLauncherApp(
                 // A real stack, not a single enum var — the hierarchy now
                 // runs 3 levels deep (Appearance → Theme →
                 // Automatic/Light/Dark), which a flat "root or not" var
-                // can't represent. `onNavigate` pushes, `onBack`/`BackHandler`
-                // pop one entry at a time — same "one level at a time"
-                // behavior the original single-level version had (a
-                // sub-page always pops toward the root first; only Back
-                // from the root itself returns to the launcher), same
-                // layered-BackHandler convention `LauncherScreen`'s own root
-                // key handling already uses for its own overlay stack.
-                // Without a BackHandler at all here, the hardware/remote
-                // BACK key falls through to the Activity's default behavior
-                // (finish/move-to-back) — confirmed on-device, before the
-                // original version of this handler existed, that it exited
-                // the entire launcher back to whatever was foregrounded
-                // before it.
+                // can't represent. `onNavigate` pushes; `onBack` and the
+                // `predictiveBackTransform` handler below pop one entry at a
+                // time — same "one level at a time" behavior the original
+                // single-level version had (a sub-page always pops toward the
+                // root first; only Back from the root itself returns to the
+                // launcher), same layered-back convention `LauncherScreen`'s
+                // own root key handling already uses for its own overlay
+                // stack. Without a back handler at all here, the hardware/
+                // remote BACK key falls through to the Activity's default
+                // behavior (finish/move-to-back) — confirmed on-device,
+                // before the original version of this handler existed, that
+                // it exited the entire launcher back to whatever was
+                // foregrounded before it.
                 val settingsBackStack = remember { mutableStateListOf(SettingsRoute.Root) }
-                BackHandler {
-                    if (settingsBackStack.size > 1) {
-                        settingsBackStack.removeAt(settingsBackStack.lastIndex)
-                    } else {
-                        screen = Screen.Launcher
-                    }
-                }
                 val tmdbApiKey by settingsViewModel.tmdbApiKey.collectAsStateWithLifecycle()
                 val tvdbApiKey by settingsViewModel.tvdbApiKey.collectAsStateWithLifecycle()
                 val artworkSource by settingsViewModel.artworkSource.collectAsStateWithLifecycle()
                 val hasAnyProviderKey by settingsViewModel.hasAnyProviderKey.collectAsStateWithLifecycle()
-                SettingsScreen(
-                    route = settingsBackStack.last(),
-                    themeMode = themeMode,
-                    tmdbApiKey = tmdbApiKey,
-                    tvdbApiKey = tvdbApiKey,
-                    artworkSource = artworkSource,
-                    hasAnyProviderKey = hasAnyProviderKey,
-                    cachedBackdrop = cachedSettingsBackdrop,
-                    onThemeModeChange = settingsViewModel::setThemeMode,
-                    onTmdbApiKeySave = settingsViewModel::setTmdbApiKey,
-                    onTvdbApiKeySave = settingsViewModel::setTvdbApiKey,
-                    onArtworkSourceChange = settingsViewModel::setArtworkSource,
-                    onResetSettings = settingsViewModel::resetSettings,
-                    onNavigate = { settingsBackStack.add(it) },
-                    onBack = { settingsBackStack.removeAt(settingsBackStack.lastIndex) },
-                )
+                // Predictive-back retreat for the whole Settings subtree. Same
+                // pop-one-level-at-a-time semantics the plain `BackHandler`
+                // here used to have: a sub-page pops toward Root first, and
+                // only Back from Root returns to the launcher. The gesture
+                // (or button/D-pad back, which `PredictiveBackHandler` also
+                // delivers) drives the scale/fade/slide, then commits this
+                // lambda exactly once; cancelling springs it back and does
+                // nothing. See `ui/motion/PredictiveBack.kt`.
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .predictiveBackTransform(enabled = true) {
+                            if (settingsBackStack.size > 1) {
+                                settingsBackStack.removeAt(settingsBackStack.lastIndex)
+                            } else {
+                                screen = Screen.Launcher
+                            }
+                        },
+                ) {
+                    SettingsScreen(
+                        route = settingsBackStack.last(),
+                        themeMode = themeMode,
+                        tmdbApiKey = tmdbApiKey,
+                        tvdbApiKey = tvdbApiKey,
+                        artworkSource = artworkSource,
+                        hasAnyProviderKey = hasAnyProviderKey,
+                        cachedBackdrop = cachedSettingsBackdrop,
+                        onThemeModeChange = settingsViewModel::setThemeMode,
+                        onTmdbApiKeySave = settingsViewModel::setTmdbApiKey,
+                        onTvdbApiKeySave = settingsViewModel::setTvdbApiKey,
+                        onArtworkSourceChange = settingsViewModel::setArtworkSource,
+                        onResetSettings = settingsViewModel::resetSettings,
+                        onNavigate = { settingsBackStack.add(it) },
+                        onBack = { settingsBackStack.removeAt(settingsBackStack.lastIndex) },
+                    )
+                }
             }
         }
         }
