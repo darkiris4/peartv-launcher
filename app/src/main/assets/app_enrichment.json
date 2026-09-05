@@ -2,7 +2,8 @@
   {
     "packageName": "com.apple.atve.androidtv.appletv",
     "accentColor": "#000000",
-    "tmdbProviderId": 350
+    "tmdbProviderId": 350,
+    "pinnedToTopShelf": true
   },
   {
     "packageName": "org.jellyfin.androidtv",
@@ -11,12 +12,14 @@
   {
     "packageName": "com.hulu.livingroomplus",
     "accentColor": "#000000",
-    "tmdbProviderId": 15
+    "tmdbProviderId": 15,
+    "pinnedToTopShelf": true
   },
   {
     "packageName": "com.disney.disneyplus",
     "accentColor": "#000000",
-    "tmdbProviderId": 337
+    "tmdbProviderId": 337,
+    "pinnedToTopShelf": true
   },
   {
     "packageName": "com.peacocktv.peacockandroid",
@@ -31,22 +34,26 @@
   {
     "packageName": "com.amazon.avod.thirdpartyclient",
     "accentColor": "#000000",
-    "tmdbProviderId": 9
+    "tmdbProviderId": 9,
+    "pinnedToTopShelf": true
   },
   {
     "packageName": "com.amazon.amazonvideo.livingroom",
     "accentColor": "#000000",
-    "tmdbProviderId": 9
+    "tmdbProviderId": 9,
+    "pinnedToTopShelf": true
   },
   {
     "packageName": "com.plexapp.android",
     "accentColor": "#E5A00D",
-    "tmdbProviderId": 538
+    "tmdbProviderId": 538,
+    "pinnedToTopShelf": true
   },
   {
     "packageName": "com.google.android.youtube.tv",
     "accentColor": "#FFFFFF",
-    "tmdbProviderId": 192
+    "tmdbProviderId": 192,
+    "pinnedToTopShelf": true
   },
   {
     "packageName": "com.retroarch",

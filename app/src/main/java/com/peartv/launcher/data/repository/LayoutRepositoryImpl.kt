@@ -23,14 +23,14 @@ private object LayoutKeys {
 }
 
 /**
- * User-directed hard cap — the dock holds at most this many tiles, full
- * stop. Applied both at initial seeding (Decision #7's alphabetical-dock-of-6
- * fallback) *and* on every [reconcile] pass, since seeding alone doesn't
- * bound it: `app_enrichment.json`'s `pinnedToTopShelf` apps were previously
- * used unconditionally with no cap, so a curation file pinning more than 6
- * apps (or a stale persisted layout from before this cap existed) could
- * silently grow the dock past its intended size — confirmed as the actual
- * cause of a dock that scrolled well past 6 tiles on-device.
+ * User-directed dock size — the dock holds exactly this many tiles on a
+ * fresh seed (curated `pinnedToTopShelf` apps first, alphabetical backfill
+ * after — see [seedLayout]) and never more than this afterward. Enforced as
+ * a ceiling on every [reconcile] pass ([enforceDockCap]) so a curation file
+ * pinning more than six apps, or a stale persisted layout from before this
+ * cap existed, self-corrects rather than scrolling past six on-device.
+ * [reconcile] deliberately does *not* backfill a dock that's *under* six —
+ * a manually pared-down dock stays pared down.
  */
 private const val MaxDockSize = 6
 
@@ -69,8 +69,16 @@ class LayoutRepositoryImpl(
 
     private fun seedLayout(installedApps: List<TvApp>): List<GridNode> {
         val alphabetical = installedApps.sortedBy { it.label.lowercase() }
-        val pinned = installedApps.filter { it.pinnedToTopShelf }
-        val dockApps = pinned.ifEmpty { alphabetical.take(MaxDockSize) }.take(MaxDockSize)
+        // Curated `pinnedToTopShelf` apps fill the dock first; whatever slots
+        // remain up to [MaxDockSize] are backfilled alphabetically, so a
+        // fresh install always seeds a full dock rather than however many
+        // curated apps happen to be installed. The earlier
+        // `pinned.ifEmpty { alphabetical.take(MaxDockSize) }` only fell back
+        // to the alphabetical fill when *nothing* was pinned — 1–5 pinned
+        // apps produced a short dock with no way to grow it, since
+        // [reconcile] deliberately never backfills a manually-arranged one.
+        val pinned = alphabetical.filter { it.pinnedToTopShelf }
+        val dockApps = (pinned + alphabetical).distinctBy { it.packageName }.take(MaxDockSize)
         val dockPackages = dockApps.map { it.packageName }.toSet()
         val gridApps = alphabetical.filterNot { it.packageName in dockPackages }
         val dockNodes = dockApps.mapIndexed { index, app ->
