@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -122,6 +123,10 @@ fun LauncherScreen(
 
     var lastDpadDirection by remember { mutableStateOf<DpadDirection?>(null) }
 
+    // The folder tile's on-screen bounds at the moment it was opened, so the
+    // modal can spring out of it and back into it (§ folder spring-open).
+    var openingFolderBounds by remember { mutableStateOf<androidx.compose.ui.geometry.Rect?>(null) }
+
     // `ContentCarousel`'s explicit `up` target for `TopShelfRow`'s tiles (see
     // that composable's own doc) — Compose's default geometric focus-search
     // failed to route DPAD_UP from a dock tile into the carousel at all,
@@ -178,10 +183,16 @@ fun LauncherScreen(
         label = "heroExpansion",
     )
 
-    BackHandler(enabled = optionsMenu != null || openFolder != null || editMode.isActive || showChannelsPrompt) {
+    // Folder-close is NOT handled here anymore — `FolderScreen` owns its own
+    // `PredictiveBackHandler` so Back can animate the modal back into its
+    // tile (Decisions Log: "Folder spring-open"). It registers deeper in the
+    // tree, so it would shadow this branch anyway; keeping `openFolder` out
+    // of the condition makes the split explicit. An Options popover / merge
+    // prompt opened *on top of* an open folder still routes here — those
+    // disable `FolderScreen`'s handler via its own `backEnabled`.
+    BackHandler(enabled = optionsMenu != null || editMode.isActive || showChannelsPrompt) {
         when {
             optionsMenu != null -> viewModel.closeOptionsMenu()
-            openFolder != null -> viewModel.closeFolder()
             editMode.isActive -> viewModel.exitEditMode()
             showChannelsPrompt -> viewModel.dismissChannelsPrompt()
         }
@@ -492,7 +503,10 @@ fun LauncherScreen(
                         AppGrid(
                             items = gridItems,
                             onAppClick = viewModel::onAppClick,
-                            onFolderClick = viewModel::openFolder,
+                            onFolderClick = { id, rect ->
+                                openingFolderBounds = rect
+                                viewModel.openFolder(id)
+                            },
                             onAppFocused = viewModel::onAppFocused,
                             onFolderFocused = viewModel::onFolderFocused,
                             editMode = editMode,
@@ -549,12 +563,28 @@ fun LauncherScreen(
                 )
             }
 
-            val openFolderValue = openFolder
-            if (openFolderValue != null) {
+            // Kept composed through the close animation: [openFolder] goes
+            // null the instant Back is pressed, but the modal still has to
+            // animate back into its tile — `folderRender` holds the folder
+            // until `FolderScreen` reports its exit animation finished.
+            var folderRender by remember { mutableStateOf<LauncherGridItem.FolderItem?>(null) }
+            LaunchedEffect(openFolder) {
+                if (openFolder != null) folderRender = openFolder
+            }
+            val folderRenderValue = folderRender
+            if (folderRenderValue != null) {
                 FolderScreen(
-                    folder = openFolderValue,
+                    folder = folderRenderValue,
+                    originBounds = openingFolderBounds,
+                    expanded = openFolder != null,
+                    backEnabled = openFolder != null && optionsMenu == null && pendingMerge == null,
+                    onBack = viewModel::closeFolder,
+                    onClosed = {
+                        folderRender = null
+                        openingFolderBounds = null
+                    },
                     enterRenameMode = openFolderRenameMode,
-                    onRename = { viewModel.renameFolder(openFolderValue.id, it) },
+                    onRename = { viewModel.renameFolder(folderRenderValue.id, it) },
                     onAppClick = viewModel::onAppClick,
                     onAppFocused = viewModel::onAppFocused,
                     optionsMenuTargetId = optionsMenu?.targetId,
