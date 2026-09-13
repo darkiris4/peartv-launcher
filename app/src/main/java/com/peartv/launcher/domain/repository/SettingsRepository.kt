@@ -51,6 +51,12 @@ interface SettingsRepository {
     /** Defaults to `false` — once the user dismisses the first-launch Channels permission prompt ("Not now"), it never shows again, regardless of whether the permission ends up granted later. Decisions Log: "First-launch Channels permission prompt." */
     val hasDismissedChannelsPrompt: Flow<Boolean>
 
+    /** Appearance > Reduce Motion. Defaults to `false` — an *additional* user override on top of the real system signal (`ui/motion/ReduceMotion.kt`'s `isReduceMotionEnabled()`, read from `Settings.Global.ANIMATOR_DURATION_SCALE`); either being true reduces motion (see `MainActivity`, which combines the two). Not a replacement for the system signal — some OEM skins/remotes make that developer-options toggle hard to reach, so this gives a reachable in-app equivalent without masking a user who *has* set the system one. */
+    val reduceMotionEnabled: Flow<Boolean>
+
+    /** Appearance > Transparency Effects. Defaults to `true` (full glass — matches this app's look before this setting existed). Turning it off skips the live `RenderEffect` blur pass in `BackdropBlur.kt`'s `Modifier.backdropBlur` entirely and pushes `glassTint()` toward a solid fill instead. */
+    val transparencyEffectsEnabled: Flow<Boolean>
+
     suspend fun setThemeMode(mode: ThemeMode)
 
     /** Blank/empty is normalized to `null` — see impl. Also reverts [artworkSource] back to [ArtworkSource.Native] if this leaves both provider keys unset (see impl). */
@@ -62,6 +68,10 @@ interface SettingsRepository {
     suspend fun setArtworkSource(source: ArtworkSource)
 
     suspend fun setChannelsPromptDismissed()
+
+    suspend fun setReduceMotionEnabled(enabled: Boolean)
+
+    suspend fun setTransparencyEffectsEnabled(enabled: Boolean)
 
     /** System > Reset Settings — clears every persisted preference (theme mode, TMDB/TVDB keys, artwork source, the Channels-prompt-dismissed flag) back to their defaults. */
     suspend fun resetAll()

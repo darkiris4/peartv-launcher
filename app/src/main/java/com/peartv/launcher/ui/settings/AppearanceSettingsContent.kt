@@ -4,10 +4,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import com.peartv.launcher.domain.repository.ThemeMode
@@ -20,22 +17,24 @@ import com.peartv.launcher.domain.repository.ThemeMode
  * "Theme" row previews the active choice without requiring a drill-in,
  * matching real tvOS Settings rows.
  *
- * Reduce Motion / Transparency Effects are visually complete placeholders
- * (local-only state, nothing persisted) — see this feature's own concerns
- * write-up: this app already has a *real*, system-sourced Reduce Motion
- * mechanism (`ui/motion/ReduceMotion.kt`, read once at startup from
- * `Settings.Global.ANIMATOR_DURATION_SCALE`); this toggle doesn't override
- * it yet.
+ * Reduce Motion / Transparency Effects are now both real, persisted
+ * (`SettingsRepository`) and functional: Reduce Motion is an override that
+ * combines with the pre-existing system-sourced signal
+ * (`ui/motion/ReduceMotion.kt`'s `isReduceMotionEnabled()`) rather than
+ * replacing it — see that field's own doc on `SettingsRepository`. Transparency
+ * Effects gates `BackdropBlur.kt`'s `LocalTransparencyEffectsEnabled`.
  */
 @Composable
 fun AppearanceSettingsContent(
     themeMode: ThemeMode,
+    reduceMotion: Boolean,
+    onReduceMotionChange: (Boolean) -> Unit,
+    transparencyEffects: Boolean,
+    onTransparencyEffectsChange: (Boolean) -> Unit,
     onOpenTheme: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val firstRowFocusRequester = remember { FocusRequester() }
-    var reduceMotion by remember { mutableStateOf(false) }
-    var transparencyEffects by remember { mutableStateOf(true) }
 
     Column(
         verticalArrangement = Arrangement.spacedBy(SettingsRowSpacing),
@@ -50,13 +49,13 @@ fun AppearanceSettingsContent(
         SettingsToggleRow(
             text = "Reduce Motion",
             checked = reduceMotion,
-            onCheckedChange = { reduceMotion = it },
+            onCheckedChange = onReduceMotionChange,
             description = "Minimize animations and transitions throughout the interface",
         )
         SettingsToggleRow(
             text = "Transparency Effects",
             checked = transparencyEffects,
-            onCheckedChange = { transparencyEffects = it },
+            onCheckedChange = onTransparencyEffectsChange,
             description = "Reduce blur and see-through panels for a more solid look",
         )
     }

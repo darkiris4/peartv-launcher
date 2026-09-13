@@ -55,6 +55,7 @@ import com.peartv.launcher.ui.launcher.HeroExpansionMillis
 import com.peartv.launcher.ui.launcher.LauncherScreen
 import com.peartv.launcher.ui.launcher.LauncherViewModel
 import com.peartv.launcher.ui.launcher.LauncherViewModelFactory
+import com.peartv.launcher.ui.launcher.LocalTransparencyEffectsEnabled
 import com.peartv.launcher.ui.launcher.StatusBar
 import com.peartv.launcher.ui.motion.LocalReduceMotion
 import com.peartv.launcher.ui.motion.isReduceMotionEnabled
@@ -266,14 +267,25 @@ private fun PearTvLauncherApp(
     // on screen (see the `Screen.Launcher` branch); `null` on a true cold
     // start straight into Settings, which falls back to a flat fill.
     var cachedSettingsBackdrop by remember { mutableStateOf<ImageBitmap?>(null) }
-    // Read once at startup (LocalReduceMotion's own doc) — every focus
-    // animation in ui/focus/TvFocusable.kt consults this to skip tilt
-    // entirely and snap (not spring) scale/elevation when Android's
-    // animator-duration-scale accessibility setting is off.
+    // The system signal (LocalReduceMotion's own doc) is read once at
+    // startup — Android TV isn't a device class where it gets toggled
+    // mid-session — and OR'd with Appearance > Reduce Motion, a live user
+    // override (`SettingsRepository.reduceMotionEnabled`'s own doc for why
+    // this exists alongside the system signal rather than replacing it):
+    // either one being true skips tilt/springs everywhere
+    // `ui/focus/TvFocusable.kt` reads this. Every focus animation there
+    // consults this to skip tilt entirely and snap (not spring)
+    // scale/elevation.
     val context = LocalContext.current
-    val reduceMotion = remember { context.isReduceMotionEnabled() }
+    val systemReduceMotion = remember { context.isReduceMotionEnabled() }
+    val reduceMotionOverride by settingsViewModel.reduceMotionEnabled.collectAsStateWithLifecycle()
+    val reduceMotion = systemReduceMotion || reduceMotionOverride
+    val transparencyEffectsEnabled by settingsViewModel.transparencyEffectsEnabled.collectAsStateWithLifecycle()
 
-    CompositionLocalProvider(LocalReduceMotion provides reduceMotion) {
+    CompositionLocalProvider(
+        LocalReduceMotion provides reduceMotion,
+        LocalTransparencyEffectsEnabled provides transparencyEffectsEnabled,
+    ) {
     PearTvLauncherTheme(darkTheme = isDarkTheme) {
         AnimatedContent(
             targetState = screen,
@@ -465,11 +477,16 @@ private fun PearTvLauncherApp(
                         tvdbApiKey = tvdbApiKey,
                         artworkSource = artworkSource,
                         hasAnyProviderKey = hasAnyProviderKey,
+                        reduceMotionEnabled = reduceMotionOverride,
+                        transparencyEffectsEnabled = transparencyEffectsEnabled,
                         cachedBackdrop = cachedSettingsBackdrop,
                         onThemeModeChange = settingsViewModel::setThemeMode,
                         onTmdbApiKeySave = settingsViewModel::setTmdbApiKey,
                         onTvdbApiKeySave = settingsViewModel::setTvdbApiKey,
                         onArtworkSourceChange = settingsViewModel::setArtworkSource,
+                        onReduceMotionChange = settingsViewModel::setReduceMotionEnabled,
+                        onTransparencyEffectsChange = settingsViewModel::setTransparencyEffectsEnabled,
+                        onRefreshMetadata = launcherViewModel::refreshMetadata,
                         onResetSettings = settingsViewModel::resetSettings,
                         onNavigate = { settingsBackStack.add(it) },
                         onBack = { settingsBackStack.removeAt(settingsBackStack.lastIndex) },

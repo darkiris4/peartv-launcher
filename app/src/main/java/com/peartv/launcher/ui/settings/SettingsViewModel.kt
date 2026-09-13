@@ -41,6 +41,12 @@ class SettingsViewModel(
         !tmdb.isNullOrBlank() || !tvdb.isNullOrBlank()
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
 
+    val reduceMotionEnabled: StateFlow<Boolean> = settingsRepository.reduceMotionEnabled
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+
+    val transparencyEffectsEnabled: StateFlow<Boolean> = settingsRepository.transparencyEffectsEnabled
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), true)
+
     fun setThemeMode(mode: ThemeMode) {
         viewModelScope.launch { settingsRepository.setThemeMode(mode) }
     }
@@ -55,6 +61,14 @@ class SettingsViewModel(
 
     fun setArtworkSource(source: ArtworkSource) {
         viewModelScope.launch { settingsRepository.setArtworkSource(source) }
+    }
+
+    fun setReduceMotionEnabled(enabled: Boolean) {
+        viewModelScope.launch { settingsRepository.setReduceMotionEnabled(enabled) }
+    }
+
+    fun setTransparencyEffectsEnabled(enabled: Boolean) {
+        viewModelScope.launch { settingsRepository.setTransparencyEffectsEnabled(enabled) }
     }
 
     /** System > Reset Settings, after the user confirms — see `SystemSettingsContent`'s own confirm prompt. */

@@ -23,6 +23,8 @@ private object Keys {
     val TVDB_API_KEY = stringPreferencesKey("tvdb_api_key")
     val ARTWORK_SOURCE = stringPreferencesKey("artwork_source")
     val CHANNELS_PROMPT_DISMISSED = booleanPreferencesKey("channels_prompt_dismissed")
+    val REDUCE_MOTION_ENABLED = booleanPreferencesKey("reduce_motion_enabled")
+    val TRANSPARENCY_EFFECTS_ENABLED = booleanPreferencesKey("transparency_effects_enabled")
 }
 
 /**
@@ -88,6 +90,12 @@ class SettingsRepositoryImpl(
     override val hasDismissedChannelsPrompt: Flow<Boolean> = context.settingsDataStore.data
         .map { it[Keys.CHANNELS_PROMPT_DISMISSED] ?: false }
 
+    override val reduceMotionEnabled: Flow<Boolean> = context.settingsDataStore.data
+        .map { it[Keys.REDUCE_MOTION_ENABLED] ?: false }
+
+    override val transparencyEffectsEnabled: Flow<Boolean> = context.settingsDataStore.data
+        .map { it[Keys.TRANSPARENCY_EFFECTS_ENABLED] ?: true }
+
     override suspend fun setThemeMode(mode: ThemeMode) {
         context.settingsDataStore.edit { it[Keys.THEME_MODE] = mode.name }
     }
@@ -112,6 +120,14 @@ class SettingsRepositoryImpl(
 
     override suspend fun setChannelsPromptDismissed() {
         context.settingsDataStore.edit { it[Keys.CHANNELS_PROMPT_DISMISSED] = true }
+    }
+
+    override suspend fun setReduceMotionEnabled(enabled: Boolean) {
+        context.settingsDataStore.edit { it[Keys.REDUCE_MOTION_ENABLED] = enabled }
+    }
+
+    override suspend fun setTransparencyEffectsEnabled(enabled: Boolean) {
+        context.settingsDataStore.edit { it[Keys.TRANSPARENCY_EFFECTS_ENABLED] = enabled }
     }
 
     override suspend fun resetAll() {

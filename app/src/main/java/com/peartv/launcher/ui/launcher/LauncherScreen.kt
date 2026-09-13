@@ -111,6 +111,7 @@ fun LauncherScreen(
     val focusedItemId by viewModel.focusedItemId.collectAsStateWithLifecycle()
     val heroBackdrop by viewModel.heroBackdrop.collectAsStateWithLifecycle()
     val artworkSource by viewModel.artworkSource.collectAsStateWithLifecycle()
+    val metadataRefreshToken by viewModel.metadataRefreshToken.collectAsStateWithLifecycle()
     val tier3Channels by viewModel.tier3Channels.collectAsStateWithLifecycle()
     val editMode by viewModel.editMode.collectAsStateWithLifecycle()
     val openFolder by viewModel.openFolder.collectAsStateWithLifecycle()
@@ -459,6 +460,7 @@ fun LauncherScreen(
                                     onProgramClick = viewModel::onProgramClick,
                                     resolveArtwork = viewModel::resolveArtwork,
                                     artworkSource = artworkSource,
+                                    metadataRefreshToken = metadataRefreshToken,
                                     activeApp = focusedApp,
                                     focusRequester = carouselFocusRequester,
                                     upFocusRequester = settingsFocusRequester,
@@ -657,10 +659,7 @@ fun LauncherScreen(
             }
 
             if (showChannelsPrompt) {
-                ChannelsPermissionPrompt(
-                    onDismiss = viewModel::dismissChannelsPrompt,
-                    modifier = Modifier.align(Alignment.Center),
-                )
+                ChannelsPermissionPrompt(onDismiss = viewModel::dismissChannelsPrompt)
             }
         }
     }

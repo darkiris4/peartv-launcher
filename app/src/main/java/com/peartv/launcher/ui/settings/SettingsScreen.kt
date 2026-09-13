@@ -95,11 +95,16 @@ fun SettingsScreen(
     tvdbApiKey: String?,
     artworkSource: ArtworkSource,
     hasAnyProviderKey: Boolean,
+    reduceMotionEnabled: Boolean,
+    transparencyEffectsEnabled: Boolean,
     cachedBackdrop: ImageBitmap?,
     onThemeModeChange: (ThemeMode) -> Unit,
     onTmdbApiKeySave: (String) -> Unit,
     onTvdbApiKeySave: (String) -> Unit,
     onArtworkSourceChange: (ArtworkSource) -> Unit,
+    onReduceMotionChange: (Boolean) -> Unit,
+    onTransparencyEffectsChange: (Boolean) -> Unit,
+    onRefreshMetadata: () -> Unit,
     onResetSettings: () -> Unit,
     onNavigate: (SettingsRoute) -> Unit,
     onBack: () -> Unit,
@@ -328,6 +333,10 @@ fun SettingsScreen(
 
                             SettingsRoute.Appearance -> AppearanceSettingsContent(
                                 themeMode = themeMode,
+                                reduceMotion = reduceMotionEnabled,
+                                onReduceMotionChange = onReduceMotionChange,
+                                transparencyEffects = transparencyEffectsEnabled,
+                                onTransparencyEffectsChange = onTransparencyEffectsChange,
                                 onOpenTheme = { onNavigate(SettingsRoute.Theme) },
                             )
                             SettingsRoute.Theme -> ThemeSettingsContent(
@@ -348,6 +357,7 @@ fun SettingsScreen(
                                 onOpenMetadataProviders = { onNavigate(SettingsRoute.MetadataProviders) },
                                 onOpenTvdbConfiguration = { onNavigate(SettingsRoute.TvdbConfiguration) },
                                 onOpenArtworkSource = { onNavigate(SettingsRoute.ArtworkSource) },
+                                onRefreshMetadata = onRefreshMetadata,
                             )
                             SettingsRoute.MetadataProviders -> MetadataProvidersSettingsContent(
                                 tmdbApiKey = tmdbApiKey,

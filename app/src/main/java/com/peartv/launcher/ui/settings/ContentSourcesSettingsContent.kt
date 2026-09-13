@@ -40,9 +40,10 @@ import com.peartv.launcher.domain.repository.ArtworkSource
  * Artwork Cache" is functional (Coil's own `ImageLoader`, already configured
  * in `PearTvLauncherApplication`'s `ImageLoaderFactory`, exposes a real,
  * safe, reversible cache-clear — not new architecture). "Refresh Metadata"
- * is a placeholder: this app has no existing "force re-fetch enrichment for
- * every app" operation to hang it on, and inventing one wasn't part of this
- * pass's scope.
+ * is now real too: it bumps `LauncherViewModel.metadataRefreshToken`, which
+ * invalidates `ContentCarousel`'s `resolvedBackdrops` cache and re-triggers
+ * `heroBackdrop`'s `flatMapLatest` — a genuine re-query against TMDB/TVDB,
+ * not just a re-read of whatever this session already resolved.
  */
 @OptIn(ExperimentalCoilApi::class)
 @Composable
@@ -51,6 +52,7 @@ fun ContentSourcesSettingsContent(
     onOpenMetadataProviders: () -> Unit,
     onOpenTvdbConfiguration: () -> Unit,
     onOpenArtworkSource: () -> Unit,
+    onRefreshMetadata: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
@@ -79,7 +81,7 @@ fun ContentSourcesSettingsContent(
         )
         SettingsActionRow(
             text = "Refresh Metadata",
-            onClick = {},
+            onClick = onRefreshMetadata,
             description = "Re-fetch the latest artwork and details for your apps",
         )
         SettingsActionRow(

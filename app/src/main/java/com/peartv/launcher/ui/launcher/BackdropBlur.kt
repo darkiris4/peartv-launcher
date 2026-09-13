@@ -26,9 +26,22 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.tv.material3.MaterialTheme
 import com.peartv.launcher.ui.theme.ambientPanelTint
 import kotlin.math.roundToInt
+
+/**
+ * Appearance > Transparency Effects (default `true`, matches this app's look
+ * before the setting existed). `false` skips the live `RenderEffect` blur
+ * pass in [backdropBlur] entirely — not just visually cheaper but genuinely
+ * cheaper: that pass is a real, measured `RenderThread` cost on the reference
+ * Shield TV Pro hardware — and pushes [glassTint] to [SolidPanelAlpha]
+ * instead of its usual translucent value, matching the setting row's own
+ * "more solid look" description. Provided once, near the app root
+ * (`MainActivity`), from `SettingsViewModel.transparencyEffectsEnabled`.
+ */
+val LocalTransparencyEffectsEnabled = staticCompositionLocalOf { true }
 
 /**
  * Blur radius for the dock and status pill while the hero is expanded. Kept
@@ -113,12 +126,19 @@ fun Modifier.backdropBlur(
     tint: Color,
     blurRadius: Dp = DockBlurRadius,
 ): Modifier = composed {
+    val transparencyEffectsEnabled = LocalTransparencyEffectsEnabled.current
     val scratch = rememberGraphicsLayer()
     val density = LocalDensity.current
     var originInWindow by remember { mutableStateOf(Offset.Zero) }
     this
         .onGloballyPositioned { originInWindow = it.positionInWindow() }
         .drawWithCache {
+            if (!transparencyEffectsEnabled) {
+                // Skips the RenderEffect capture/blur below entirely, not
+                // just its visual result — see LocalTransparencyEffectsEnabled's
+                // own doc.
+                return@drawWithCache onDrawBehind { drawRect(tint) }
+            }
             val radiusPx = with(density) { blurRadius.toPx() }
             scratch.renderEffect = BlurEffect(radiusPx, radiusPx, TileMode.Clamp)
             scratch.clip = true
@@ -150,6 +170,10 @@ fun Modifier.backdropBlur(
 @Composable
 fun glassTint(): Color {
     val isDark = MaterialTheme.colorScheme.background.luminance() < 0.5f
-    return MaterialTheme.ambientPanelTint()
-        .copy(alpha = if (isDark) TranslucentPanelAlpha else TranslucentPanelAlphaLight)
+    val alpha = if (LocalTransparencyEffectsEnabled.current) {
+        if (isDark) TranslucentPanelAlpha else TranslucentPanelAlphaLight
+    } else {
+        SolidPanelAlpha
+    }
+    return MaterialTheme.ambientPanelTint().copy(alpha = alpha)
 }

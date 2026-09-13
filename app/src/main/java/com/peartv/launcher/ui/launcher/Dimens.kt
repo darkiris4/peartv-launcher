@@ -100,6 +100,9 @@ val TrayShadowElevation = 12.dp
 const val TranslucentPanelAlpha = 0.42f
 const val TranslucentPanelAlphaLight = 0.16f
 
+/** Appearance > Transparency Effects, off — `glassTint()`'s fill when the live blur is skipped, matching that setting row's own description ("a more solid look") rather than either theme's translucent value above. */
+const val SolidPanelAlpha = 0.96f
+
 /**
  * The tray's full rendered height — tile height + the tray's own vertical
  * padding, deliberately *not* [TopShelfItemHeight] (tray tiles don't carry

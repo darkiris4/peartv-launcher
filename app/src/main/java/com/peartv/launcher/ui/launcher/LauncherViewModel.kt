@@ -130,6 +130,9 @@ class LauncherViewModel(
     private val _focusedItemId = MutableStateFlow<String?>(null)
     val focusedItemId: StateFlow<String?> = _focusedItemId.asStateFlow()
 
+    /** Bumped by [refreshMetadata] — in-memory only, never persisted (a re-fetch request, not a preference). [heroBackdrop]'s `combine` below re-triggers its `flatMapLatest` on every bump, and `ContentCarousel`'s `resolvedBackdrops` cache keys on [metadataRefreshToken] alongside [artworkSource] (same invalidation reasoning as that field's own doc) — so Content Sources > "Refresh Metadata" actually re-queries TMDB/TVDB instead of reusing whatever this session already resolved. */
+    private val _metadataRefreshToken = MutableStateFlow(0)
+
     /**
      * PRODUCT_SPEC.md §3.1.2 — Tier 1's backdrop rotates through up to a
      * handful of currently-popular titles for the focused app's provider,
@@ -145,7 +148,7 @@ class LauncherViewModel(
      * looping to re-emit the same value on a timer for no visible effect.
      */
     val heroBackdrop: StateFlow<TmdbBackdrop?> =
-        combine(focusedApp, settingsRepository.tmdbApiKey, settingsRepository.artworkSource) { app, apiKey, source ->
+        combine(focusedApp, settingsRepository.tmdbApiKey, settingsRepository.artworkSource, _metadataRefreshToken) { app, apiKey, source, _ ->
             Triple(app, apiKey, source)
         }
             .flatMapLatest { (app, apiKey, source) ->
@@ -174,6 +177,13 @@ class LauncherViewModel(
     /** `ContentCarousel` reads this directly (not just through [resolveArtwork]'s own internal read) so its `resolvedBackdrops` cache can key on the live value — a setting change needs to invalidate previously-resolved per-program decisions made under the old policy, not just affect newly-resolved ones. Defaults to [ArtworkSource.Native], same as [SettingsRepository]'s own default, so there's no flash of a different policy before the real persisted value loads. */
     val artworkSource: StateFlow<ArtworkSource> = settingsRepository.artworkSource
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), ArtworkSource.Native)
+
+    val metadataRefreshToken: StateFlow<Int> = _metadataRefreshToken.asStateFlow()
+
+    /** Content Sources > "Refresh Metadata" — see [_metadataRefreshToken]'s own doc. */
+    fun refreshMetadata() {
+        _metadataRefreshToken.value++
+    }
 
     /**
      * Tier 3 (§2.4/§3.1.1) — real Home Screen Channels data for the focused

@@ -142,13 +142,31 @@ fun AboutSettingsContent(modifier: Modifier = Modifier) {
     }
 }
 
-/** `SettingsRoute.Licenses` — placeholder; no licenses-metadata dependency (e.g. `oss-licenses`) exists in this project yet to back a real listing. */
+/**
+ * `SettingsRoute.Licenses` — a real, hand-maintained list (no `oss-licenses`-
+ * style dependency exists in this project to generate one automatically;
+ * this page's own `Column` has no scroll container, same as every other
+ * settings page, so a long per-artifact listing wasn't an option here
+ * anyway — grouped by license instead). Every direct runtime dependency in
+ * `gradle/libs.versions.toml` happens to be Apache License 2.0, which is
+ * what makes one grouped paragraph both accurate and complete rather than a
+ * simplification. Update this if a future dependency uses a different
+ * license — this list is not auto-verified against the real build.
+ */
 @Composable
 fun LicensesSettingsContent(modifier: Modifier = Modifier) {
     Column(modifier = modifier.fillMaxWidth()) {
         Text(
-            text = "Open source license information isn't available yet — this page previews the eventual layout.",
+            text = "PearTV is built on these open source projects, all under the Apache License 2.0:",
             color = MaterialTheme.colorScheme.onBackground,
+        )
+        Text(
+            text = "• AndroidX Jetpack (Google) — Core, Lifecycle, Activity, Compose, TV Material, DataStore, Palette, Core SplashScreen, Media3\n" +
+                "• Kotlin & kotlinx.coroutines (JetBrains)\n" +
+                "• Coil (Coil Contributors) — image loading\n" +
+                "• OkHttp (Square)",
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(top = 12.dp),
         )
     }
 }

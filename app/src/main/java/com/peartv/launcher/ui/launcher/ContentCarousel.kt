@@ -176,6 +176,7 @@ fun ContentCarousel(
     onProgramClick: (ChannelProgram) -> Unit,
     resolveArtwork: suspend (program: ChannelProgram, channelArtWidth: Int?, channelArtHeight: Int?) -> ResolvedArtwork,
     artworkSource: ArtworkSource,
+    metadataRefreshToken: Int,
     activeApp: TvApp?,
     focusRequester: FocusRequester,
     upFocusRequester: FocusRequester,
@@ -217,9 +218,12 @@ fun ContentCarousel(
     // above (its own effect, not folded into the one above) so a slow
     // provider lookup never delays the poster hold itself. `remember` keys
     // on `artworkSource` — a setting change invalidates every
-    // already-resolved decision (they were made under the *old* policy),
-    // lazily re-resolved as each index comes back into view rather than all
-    // at once. Every program attempts this now, not just portrait/square
+    // already-resolved decision (they were made under the *old* policy) —
+    // and on `metadataRefreshToken`, so Content Sources > "Refresh Metadata"
+    // (`LauncherViewModel.refreshMetadata`) invalidates the same cache on
+    // demand even when nothing else about the policy changed, lazily
+    // re-resolved as each index comes back into view rather than all at
+    // once. Every program attempts this now, not just portrait/square
     // ones — `LauncherViewModel.resolveArtwork`'s own policy decides what to
     // do with landscape channel art now, this composable no longer gates
     // the attempt itself.
@@ -243,7 +247,7 @@ fun ContentCarousel(
     // whatever prefetch results already landed before cancellation stay in
     // `resolvedBackdrops`, nothing already resolved is wasted.
     val context = LocalContext.current
-    val resolvedBackdrops = remember(channel, artworkSource) { mutableStateMapOf<Int, ResolvedArtwork>() }
+    val resolvedBackdrops = remember(channel, artworkSource, metadataRefreshToken) { mutableStateMapOf<Int, ResolvedArtwork>() }
 
     suspend fun ensureResolved(targetIndex: Int, reason: String) {
         if (resolvedBackdrops.containsKey(targetIndex)) {
