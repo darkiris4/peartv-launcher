@@ -134,6 +134,19 @@ class LauncherViewModel(
     private val _metadataRefreshToken = MutableStateFlow(0)
 
     /**
+     * [heroBackdrop]'s rotation position, keyed by TMDB provider id — same
+     * user-reported issue and same shape of fix as [carouselIndexByPackage]'s
+     * own doc below: refocusing an app (even the exact same one) always
+     * restarted this rotation at its first trending title, since `index`
+     * lived only as a local `var` inside that flow's own `flatMapLatest`
+     * branch — torn down and rebuilt from scratch on every focus change, by
+     * design of `flatMapLatest` itself. Keyed by provider id rather than
+     * package name since that's what actually determines the fetched list —
+     * two apps sharing a provider id correctly share a rotation position too.
+     */
+    private val heroBackdropIndexByProvider = mutableMapOf<Int, Int>()
+
+    /**
      * PRODUCT_SPEC.md §3.1.2 — Tier 1's backdrop rotates through up to a
      * handful of currently-popular titles for the focused app's provider,
      * one [HeroBackdropRotationMillis] hold apiece; `HeroBanner`'s existing
@@ -162,12 +175,13 @@ class LauncherViewModel(
                             emit(null)
                             return@flow
                         }
-                        var index = 0
+                        var index = (heroBackdropIndexByProvider[providerId] ?: 0) % backdrops.size
                         while (true) {
-                            emit(backdrops[index % backdrops.size])
+                            heroBackdropIndexByProvider[providerId] = index
+                            emit(backdrops[index])
                             if (backdrops.size == 1) return@flow
                             delay(HeroBackdropRotationMillis)
-                            index++
+                            index = (index + 1) % backdrops.size
                         }
                     }
                 }
@@ -211,6 +225,34 @@ class LauncherViewModel(
             }
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    /**
+     * `ContentCarousel`'s rotation position, keyed by package — user-reported:
+     * defocusing a tile and refocusing it later always restarted the carousel
+     * at its first program, which read as unnatural (a real channel doesn't
+     * forget its place because you looked away). Root cause was that the
+     * carousel's `index`/`phase`/`cycle` lived entirely in `remember(channel)`
+     * inside `ContentCarousel` itself — composable-local state that's
+     * discarded the instant the composable unmounts (which happens on every
+     * defocus, since only the currently-focused app's carousel is composed at
+     * all), regardless of whether [tier3Channels] happens to return an
+     * `equals()`-identical `AppChannel` for the same package on refocus (it
+     * doesn't; each focus re-fetches fresh). Hoisting just the position here
+     * — not the phase/cycle/timer state, which are fine to restart fresh —
+     * survives exactly as long as this ViewModel does (the whole launcher
+     * session), which is the natural scope: not full persistence across app
+     * restarts, just "don't forget where you were while the launcher is still
+     * running." A plain mutable map, not a `StateFlow`: nothing should
+     * recompose when this changes, it's read once at the carousel's own
+     * mount time and written back as it plays.
+     */
+    private val carouselIndexByPackage = mutableMapOf<String, Int>()
+
+    fun carouselIndex(packageName: String?): Int = packageName?.let { carouselIndexByPackage[it] } ?: 0
+
+    fun setCarouselIndex(packageName: String?, index: Int) {
+        if (packageName != null) carouselIndexByPackage[packageName] = index
+    }
 
     private val appsByPackage: StateFlow<Map<String, TvApp>> = apps
         .map { list -> list.associateBy { it.packageName } }

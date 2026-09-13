@@ -462,6 +462,8 @@ fun LauncherScreen(
                                     artworkSource = artworkSource,
                                     metadataRefreshToken = metadataRefreshToken,
                                     activeApp = focusedApp,
+                                    initialIndex = viewModel.carouselIndex(focusedApp?.packageName),
+                                    onIndexChange = { viewModel.setCarouselIndex(focusedApp?.packageName, it) },
                                     focusRequester = carouselFocusRequester,
                                     upFocusRequester = settingsFocusRequester,
                                     trayClearance = trayClearance,

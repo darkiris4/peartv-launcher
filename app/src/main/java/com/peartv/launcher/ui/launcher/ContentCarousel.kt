@@ -178,6 +178,8 @@ fun ContentCarousel(
     artworkSource: ArtworkSource,
     metadataRefreshToken: Int,
     activeApp: TvApp?,
+    initialIndex: Int,
+    onIndexChange: (Int) -> Unit,
     focusRequester: FocusRequester,
     upFocusRequester: FocusRequester,
     modifier: Modifier = Modifier,
@@ -188,7 +190,15 @@ fun ContentCarousel(
 ) {
     if (channel.programs.isEmpty()) return
 
-    var index by remember(channel) { mutableIntStateOf(0) }
+    // Seeded from the ViewModel's own per-package memory (see
+    // `LauncherViewModel.carouselIndex`'s own doc), not always 0 — resumes
+    // roughly where this app's carousel was left rather than restarting at
+    // the first program every time this composable remounts (which happens
+    // on every defocus/refocus, since only the focused app's carousel is
+    // composed at all). Coerced against this fetch's own program count in
+    // case it differs from whatever count the persisted index was recorded
+    // against.
+    var index by remember(channel) { mutableIntStateOf(initialIndex.coerceIn(0, channel.programs.size - 1)) }
     var phase by remember(channel) { mutableStateOf(CarouselPhase.Poster) }
     // Single-program channels advance() back to the same index, and Compose
     // skips the state write when the value is unchanged — so LaunchedEffect
@@ -199,6 +209,7 @@ fun ContentCarousel(
     fun advance(delta: Int) {
         index = (index + delta).mod(channel.programs.size)
         cycle++
+        onIndexChange(index)
     }
 
     LaunchedEffect(index, cycle) {
