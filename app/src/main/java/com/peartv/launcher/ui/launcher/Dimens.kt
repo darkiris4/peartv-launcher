@@ -119,13 +119,21 @@ val TopShelfTrayHeight: Dp = TileHeight + TrayPaddingVertical * 2
  * focused-in-grid collapses the tray up to flush with the top, backdrop
  * artwork fading out entirely as it collapses (`LauncherScreen`'s
  * `heroExpansion` animation — these are its two endpoints, not a fixed
- * split). Originally sized to keep a sliver of the grid's own first row
- * peeking out below hero at full expansion; grid now instead animates
- * fully off-screen at that endpoint (`LauncherScreen.kt`'s own doc on its
- * hero `Box`) since that peeking sliver was the cause of a confirmed-on-
- * device background-seam bug, but this constant still sets the tray's own
- * breathing room from the bottom edge in the expanded state — repurposed,
- * not retired.
+ * split).
+ *
+ * Originally sized to also keep a sliver of the grid's own first row
+ * peeking out below hero at full expansion, then pulled back to a fully
+ * off-screen grid at that endpoint after that peeking sliver caused a
+ * confirmed-on-device background-seam bug against the *old* height-
+ * animating-hero architecture (`LauncherScreen.kt`'s own doc has the full
+ * history). Real-tvOS-reference comparison restored the peek: the current
+ * architecture's hero vignette already fades to the same ambient tone the
+ * grid sits on well before this peek amount is reached, so the old seam
+ * hazard doesn't apply anymore (see `LauncherScreen.kt`'s own doc on its
+ * grid `Box` for the reasoning) — this constant now drives both the tray's
+ * breathing room from the bottom edge *and* the grid's peek amount in the
+ * expanded state, deliberately shared rather than split into two similar-
+ * but-different values.
  */
 val HeroGridPeekHeight = ScreenSafeAreaVertical + 20.dp
 

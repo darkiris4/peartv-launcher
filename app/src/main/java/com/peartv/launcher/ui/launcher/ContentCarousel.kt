@@ -349,16 +349,23 @@ fun ContentCarousel(
             }
         }
 
-        // Shared bottom/left vignette tuning (Vignette.kt) — same feathered,
+        // Shared bottom vignette tuning (Vignette.kt) — same feathered,
         // bounded, theme-aware fade HeroBanner.kt's Tier 1/2 hero uses, not
         // a separately-tuned one. This carousel had its own plain 2-stop,
         // unbounded fade (fully transparent at the very top down to fully
-        // opaque at the very bottom; similarly unbounded left-to-right)
-        // until user-directed unification — same hard-edge and
-        // fades-through-black artifacts featheredEdgeStops' own doc
-        // describes, just never caught here independently since this
-        // carousel is usually covered in real photographic art busy enough
-        // to mask it, unlike Tier 2's flat sampled-color fill.
+        // opaque at the very bottom) until user-directed unification — same
+        // hard-edge and fades-through-black artifacts featheredEdgeStops'
+        // own doc describes, just never caught here independently since
+        // this carousel is usually covered in real photographic art busy
+        // enough to mask it, unlike Tier 2's flat sampled-color fill.
+        //
+        // No left-edge fade here (or in HeroBanner.kt) anymore — real-tvOS-
+        // reference comparison (user-directed): the reference only ever
+        // darkens near the bottom edge, never the left. The ambient left
+        // vignette this used to carry (`VignetteLeftFraction`, deleted)
+        // protected nothing on its own; the dedicated text scrim just below
+        // already covers the one place that genuinely needs it (behind
+        // [ProgramMetadata]'s lower-left text).
         //
         // Fades to `MaterialTheme.ambientPanelTint()`, not flat
         // `backgroundColor` — same fix as HeroBanner.kt's identical vignette,
@@ -378,21 +385,6 @@ fun ContentCarousel(
                     ),
                 ),
         )
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(
-                    Brush.horizontalGradient(
-                        colorStops = featheredEdgeStops(
-                            color = MaterialTheme.ambientPanelTint(),
-                            start = 0f,
-                            end = VignetteLeftFraction,
-                            reversed = true,
-                        ),
-                    ),
-                ),
-        )
-
         // Dedicated text-legibility scrim (§5 #14) — a second, taller/
         // stronger, fixed-dark fade layered on top of the ambient vignette
         // above; see TopShelfTextScrimFraction's own doc (Vignette.kt) for

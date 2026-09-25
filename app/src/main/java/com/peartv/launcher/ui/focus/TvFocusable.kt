@@ -15,8 +15,14 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.input.key.Key
@@ -50,6 +56,34 @@ private const val MaxShadowElevationPx = 48f
  */
 private const val FocusShadowScaleLight = 0.35f
 private const val FocusShadowScaleDark = 0.16f
+
+/**
+ * A physical light/shadow pair replacing the old single isotropic
+ * white-tinted elevation shadow — user-reported against the real tvOS
+ * reference: tinting the cast shadow with [glowColor] (near-white in dark
+ * theme) didn't read as a shadow at all, it read as a soft backlit glow,
+ * with nothing simulating tvOS's own directional bevel (a bright edge on
+ * the tile's upper-left, a dark cast shadow toward the lower-right).
+ *
+ * Both fixed, not theme-flipped like [glowColor] — a real light source
+ * doesn't change color when a UI's theme toggles: a cast shadow reads dark
+ * and a highlight reads light regardless of app theme. This is also safer
+ * than the color it replaces, not just different: [glowColor]'s own doc
+ * warns a stray plain-white shadow default once shipped invisible in light
+ * theme unnoticed; a fixed *dark* shadow is visible against both themes'
+ * backgrounds, so this removes that failure mode rather than risking it
+ * again. [glowColor] still drives [shadowScale] below (still a valid
+ * dark/light-theme probe) — only the shadow's own rendered color, and the
+ * highlight's existence at all, are new.
+ */
+private val FocusShadowColor = Color.Black
+private val FocusHighlightColor = Color.White
+
+/** [FocusHighlightColor]'s own strength at full focus — kept subtle, a rim not a border. */
+private const val FocusHighlightAlpha = 0.5f
+
+/** Width of the top-left highlight rim drawn in [tvOSFocusable]'s own trailing `drawWithContent`. */
+private val FocusHighlightStrokeWidth = 1.5.dp
 
 /**
  * How far an *unfocused* focusable dims while a sibling holds focus —
@@ -348,7 +382,42 @@ fun Modifier.tvOSFocusable(
             this.shape = shape
             clip = true
             shadowElevation = elevation.value * MaxShadowElevationPx * shadowScale
-            spotShadowColor = glowColor
-            ambientShadowColor = glowColor
+            spotShadowColor = FocusShadowColor
+            ambientShadowColor = FocusShadowColor
+        }
+        // The bevel's other half (see [FocusHighlightColor]'s own doc) — a
+        // thin bright rim along the tile's own top-left edge, diagonally
+        // faded out toward the bottom-right corner the cast shadow leans
+        // into, so both read as one directional light source rather than
+        // two independently-tuned effects. Chained *after* the graphicsLayer
+        // above (not before it) so this draw lands inside that layer's own
+        // transform/clip — it scales, tilts, and gets rounded-corner-clipped
+        // together with the tile's real content, not as a separate
+        // unclipped overlay. Cheap on purpose: a single stroked round-rect
+        // with a linear-gradient brush, no RenderEffect/blur — this runs on
+        // every focused tile, so it needs to stay light on Shield hardware
+        // the same way the rest of this file's effects were already tuned
+        // to.
+        .drawWithContent {
+            drawContent()
+            if (elevateOnFocus && elevation.value > 0f) {
+                val strokeWidthPx = FocusHighlightStrokeWidth.toPx()
+                val cornerRadiusPx = cornerRadius.toPx()
+                val inset = strokeWidthPx / 2f
+                drawRoundRect(
+                    brush = Brush.linearGradient(
+                        colors = listOf(
+                            FocusHighlightColor.copy(alpha = FocusHighlightAlpha * elevation.value),
+                            FocusHighlightColor.copy(alpha = 0f),
+                        ),
+                        start = Offset.Zero,
+                        end = Offset(size.width * 0.7f, size.height * 0.7f),
+                    ),
+                    topLeft = Offset(inset, inset),
+                    size = Size(size.width - strokeWidthPx, size.height - strokeWidthPx),
+                    cornerRadius = CornerRadius(cornerRadiusPx, cornerRadiusPx),
+                    style = Stroke(width = strokeWidthPx),
+                )
+            }
         }
 }

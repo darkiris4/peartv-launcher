@@ -5,11 +5,11 @@ import androidx.compose.ui.graphics.Color
 /**
  * Shared "top shelf" vignette tuning — `HeroBanner.kt` (Tier 1/2's hero) and
  * `ContentCarousel.kt` (Tier 3's full-screen carousel) each fade toward the
- * page background along their bottom/left edges so whatever overlaps them
- * (the tray, the lower-left title/metadata text) stays legible regardless
- * of how bright the backdrop art underneath is. Shared here, not duplicated
- * per file, so every surface reads as one consistent treatment rather than
- * each accumulating its own slightly-different tuning over time — confirmed
+ * page background along their bottom edge so whatever overlaps it (the
+ * tray, the lower-left title/metadata text) stays legible regardless of how
+ * bright the backdrop art underneath is. Shared here, not duplicated per
+ * file, so every surface reads as one consistent treatment rather than each
+ * accumulating its own slightly-different tuning over time — confirmed
  * on-device this had already happened once (`ContentCarousel` still had an
  * older, unbounded/unfeathered version when this was written).
  *
@@ -19,12 +19,30 @@ import androidx.compose.ui.graphics.Color
  * boundary itself was confirmed to have a visible hard edge — see
  * [featheredEdgeStops]'s own doc for that fix. These are the values after
  * both rounds of on-device correction.
+ *
+ * This pair used to have a `VignetteLeftFraction` sibling (a matching
+ * ambient fade along the left edge) — deleted, real-tvOS-reference
+ * comparison (user-directed): the actual reference never darkens the left
+ * edge, only the bottom. [TopShelfTextScrimFraction]/[TopShelfTextScrimMaxAlpha]
+ * below already cover the one place that genuinely needs left-edge
+ * protection (the lower-left title text itself), so the ambient ones were
+ * fading something the reference doesn't.
  */
 const val VignetteBottomFraction = 0.22f
-const val VignetteLeftFraction = 0.14f
 
-/** Max opacity either vignette fade reaches at its most extreme edge ("strength") — the tray's own near-opaque panel fill (TranslucentPanelAlpha, Dimens.kt) already handles its own legibility independently, so capping this below full opacity doesn't reopen the legibility problem the vignette originally existed to solve. */
-const val VignetteMaxAlpha = 0.65f
+/**
+ * Max opacity the ambient bottom fade reaches at its most extreme edge
+ * ("strength") — the tray's own near-opaque panel fill (TranslucentPanelAlpha,
+ * Dimens.kt) already handles its own legibility independently, so capping
+ * this below full opacity doesn't reopen the legibility problem the vignette
+ * originally existed to solve.
+ *
+ * Reduced from 0.65 alongside [TopShelfTextScrimMaxAlpha]'s own second-pass
+ * cut (see that constant's doc) — this fade stacks underneath the text
+ * scrim over the same bottom region, so its own strength matters to the
+ * *combined* worst-case darkness there too, not just in isolation.
+ */
+const val VignetteMaxAlpha = 0.5f
 
 /**
  * A second, separately-tuned vertical fade — deliberately *not* reusing
@@ -34,21 +52,33 @@ const val VignetteMaxAlpha = 0.65f
  * much"); this pair exists specifically to guarantee legible title/
  * metadata text over arbitrary, unpredictable photographic artwork, a
  * stricter requirement that would force the ambient fade back toward
- * "too much" if the two shared one tuning. Taller (covers most of the
- * surface, not just its bottom edge) and stronger (reaches near-opaque)
- * for exactly that reason. Callers pair this with a *fixed* dark color
- * (`MaterialTheme.colorScheme.scrim`, not the theme-flipped `backgroundColor`
- * the ambient vignette above uses) — see `HeroBanner.kt`/`ContentCarousel.kt`'s
- * own call sites for why: real tvOS keeps Top Shelf title/metadata text a
- * consistent white-on-dark regardless of system light/dark appearance,
- * since the artwork behind it is arbitrary photographic content of
- * unknown brightness. A theme-flipped scrim+text pairing (dark text on a
- * light scrim, in light theme) can't offer that same legibility guarantee
- * against unpredictable art the way a fixed dark scrim under fixed light
- * text can.
+ * "too much" if the two shared one tuning. Taller (covers more of the
+ * surface than just the ambient fade's own bottom edge) and stronger
+ * (reaches closer to opaque) for exactly that reason. Callers pair this
+ * with a *fixed* dark color (`MaterialTheme.colorScheme.scrim`, not the
+ * theme-flipped `backgroundColor` the ambient vignette above uses) — see
+ * `HeroBanner.kt`/`ContentCarousel.kt`'s own call sites for why: real tvOS
+ * keeps Top Shelf title/metadata text a consistent white-on-dark
+ * regardless of system light/dark appearance, since the artwork behind it
+ * is arbitrary photographic content of unknown brightness. A theme-flipped
+ * scrim+text pairing (dark text on a light scrim, in light theme) can't
+ * offer that same legibility guarantee against unpredictable art the way a
+ * fixed dark scrim under fixed light text can.
+ *
+ * Reduced twice from an original 0.75/0.85 — real-tvOS-reference comparison
+ * (user-directed). First pass (0.45/0.7) was still confirmed too strong
+ * on-device: this fade *stacks* with [VignetteBottomFraction]'s own ambient
+ * fade underneath it (both are alpha-composited over the same art), so even
+ * two individually-modest fades compound — the combined result was reading
+ * as solid black well before the true bottom edge, unlike the reference,
+ * which keeps a hint of the art visible even directly behind the tray
+ * (whose own translucent glass panel — `GlassPanel.kt` — does real
+ * legibility work there too, not just this scrim). Pulled down again to
+ * keep that compounded worst-case (both fades at their own max, right at
+ * the bottom edge) well short of reading as flat black.
  */
-const val TopShelfTextScrimFraction = 0.75f
-const val TopShelfTextScrimMaxAlpha = 0.85f
+const val TopShelfTextScrimFraction = 0.38f
+const val TopShelfTextScrimMaxAlpha = 0.55f
 
 /** Sample points for [featheredEdgeStops]'s piecewise approximation of a smoothstep curve — enough for the curve to read as genuinely smooth (not visibly faceted) at the scale a full-hero/carousel gradient renders at. */
 private const val VignetteFeatherSteps = 8

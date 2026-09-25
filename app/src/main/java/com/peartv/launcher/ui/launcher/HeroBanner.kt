@@ -246,28 +246,14 @@ fun HeroBanner(
                 ),
         )
 
-        // §3.1.2 Template 1 calls for a vignette along the bottom **and
-        // left** edges — this closes the previously-open gap (§3.1.2's gap
-        // table, "Vignette: Bottom-only"). Mirrors the vertical fade above
-        // (same solid-to-transparent construction, just horizontal, and same
-        // feathered-edge fix — see that fade's own comment) so the
-        // lower-left title text (below) always sits on a legible background
-        // regardless of the backdrop art's own brightness there.
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(
-                    Brush.horizontalGradient(
-                        colorStops = featheredEdgeStops(
-                            color = MaterialTheme.ambientPanelTint(),
-                            start = 0f,
-                            end = VignetteLeftFraction,
-                            reversed = true,
-                            maxAlpha = VignetteMaxAlpha,
-                        ),
-                    ),
-                ),
-        )
+        // §3.1.2 Template 1 used to call for a vignette along the bottom
+        // *and* left edges here — reversed (user-directed, real-tvOS-
+        // reference comparison): the actual reference only ever darkens
+        // near the bottom edge, never the left, so the ambient left fade
+        // this used to carry (`VignetteLeftFraction`, deleted) was fading
+        // something the reference doesn't. The dedicated text scrim just
+        // below already covers the one place that genuinely needs
+        // protection (behind the lower-left title text itself).
 
         // §3.1.2 Template 1 — title of the specific content shown in the
         // backdrop, lower-left. Tier 1 only (Tier 2's static app banner has

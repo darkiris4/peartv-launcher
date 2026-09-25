@@ -322,10 +322,11 @@ fun LauncherScreen(
                     effectiveRowSpacing * (actualGridRows - 1).coerceAtLeast(0)
                 ).coerceAtMost(collapsedGridHeight)
 
-            // Tray's own expanded-position endpoint only — see the hero
-            // Box's own doc below for why grid no longer uses this (it
-            // now animates all the way to `maxHeight`, off-screen, instead
-            // of stopping [HeroGridPeekHeight] short of it).
+            // Tray's own expanded-position endpoint — see the hero Box's
+            // own doc below. The grid (Layer 3) now shares this same
+            // constant for its own expanded-state resting spot, so a sliver
+            // of row 0 peeks up from the bottom edge even at full
+            // expansion, matching the real tvOS reference.
             val expandedHeroHeight = maxHeight - HeroGridPeekHeight
 
     CompositionLocalProvider(LocalLastDpadDirection provides lastDpadDirection) {
@@ -397,11 +398,28 @@ fun LauncherScreen(
             // Hero's backdrop art now always fills the full screen (fading
             // its own opacity via [expansionProgress] as `contentAlpha`,
             // already wired for this) instead of shrinking away — no more
-            // boundary for a seam to form at, because there's no more grid
-            // sliver peeking out from under hero at all. Tray and grid each
+            // boundary for a *hero* seam to form at. Tray and grid each
             // animate their own Y offset directly instead of relying on
             // Column reflow (grid) / [Alignment.BottomCenter] of a resizing
             // parent (tray) to reposition them as hero's height changed.
+            //
+            // Real-tvOS-reference comparison: the grid (Layer 3, below) once
+            // again stops [HeroGridPeekHeight] short of the bottom edge at
+            // full expansion instead of animating all the way off-screen —
+            // matching the reference, which always shows a sliver of the
+            // next row peeking up. This isn't the same hazard the paragraph
+            // above describes: that old seam was a *flatly-lit* grid tone
+            // butting straight up against the hero's own fade with nothing
+            // bridging them. Here, [HeroGridPeekHeight] (47dp) sits entirely
+            // inside the hero's own bottom vignette zone (`VignetteBottomFraction`,
+            // Vignette.kt — ~22% of the screen height, far taller than the
+            // peek), which already fades toward the same `ambientPanelTint()`
+            // tone the grid's own backdrop uses — so the peeking tiles land
+            // on an already-blended background, not a hard-lit one. Layer 2
+            // (`GridBackdrop`, just below) deliberately stays gated on
+            // `expansionProgress < 1f` regardless — it exists to bridge the
+            // *collapsing* transition, and at rest (`expansionProgress == 1`)
+            // the hero's own vignette alone already covers this.
             //
             // Deliberately NOT blocking background focus with
             // `focusProperties { canFocus = false }` while an overlay is
@@ -517,19 +535,20 @@ fun LauncherScreen(
                     }
                 }
 
-                // Layer 3 (middle): grid, slides up from fully below the
-                // fold (expanded, [expansionProgress] = 1) into its resting
-                // position right below where the tray sits when collapsed
-                // ([expansionProgress] = 0) — same resting position/height
-                // the old `Modifier.weight(AppGridWeight)` inside a Column
-                // gave it, just computed directly now that this isn't a
-                // Column anymore.
+                // Layer 3 (middle): grid, slides up from just [HeroGridPeekHeight]
+                // short of the bottom edge (expanded, [expansionProgress] = 1,
+                // matching the real tvOS reference's peeking next-row sliver)
+                // into its resting position right below where the tray sits
+                // when collapsed ([expansionProgress] = 0) — same resting
+                // position/height the old `Modifier.weight(AppGridWeight)`
+                // inside a Column gave it, just computed directly now that
+                // this isn't a Column anymore.
                 if (gridItems.isNotEmpty()) {
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(actualGridHeight)
-                            .offset(y = lerp(screenHeight, gridCollapsedTop, 1f - expansionProgress)),
+                            .offset(y = lerp(screenHeight - HeroGridPeekHeight, gridCollapsedTop, 1f - expansionProgress)),
                     ) {
                         AppGrid(
                             items = gridItems,
