@@ -27,6 +27,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -440,6 +441,18 @@ private fun PearTvLauncherApp(
                 // it exited the entire launcher back to whatever was
                 // foregrounded before it.
                 val settingsBackStack = remember { mutableStateListOf(SettingsRoute.Root) }
+                // Which sub-route each route was last navigated into from —
+                // user-reported bug fix: `SettingsScreen`'s pages used to
+                // always give their *first* row initial focus regardless of
+                // how you'd gotten there, so Back from any sub-page landed
+                // focus back at the top of the parent list instead of on the
+                // row you'd actually drilled in from. Recorded on every
+                // `onNavigate` push below; read back by `SettingsScreen` as
+                // `focusedChildRoute` for whichever route is currently
+                // showing. A plain map, not part of the back stack itself —
+                // it only ever needs the *last* child per parent, and
+                // outlives any single push/pop.
+                val lastChildRouteByParent = remember { mutableStateMapOf<SettingsRoute, SettingsRoute>() }
                 val tmdbApiKey by settingsViewModel.tmdbApiKey.collectAsStateWithLifecycle()
                 val tvdbApiKey by settingsViewModel.tvdbApiKey.collectAsStateWithLifecycle()
                 val artworkSource by settingsViewModel.artworkSource.collectAsStateWithLifecycle()
@@ -488,7 +501,11 @@ private fun PearTvLauncherApp(
                         onTransparencyEffectsChange = settingsViewModel::setTransparencyEffectsEnabled,
                         onRefreshMetadata = launcherViewModel::refreshMetadata,
                         onResetSettings = settingsViewModel::resetSettings,
-                        onNavigate = { settingsBackStack.add(it) },
+                        focusedChildRoute = lastChildRouteByParent[settingsBackStack.last()],
+                        onNavigate = { target ->
+                            lastChildRouteByParent[settingsBackStack.last()] = target
+                            settingsBackStack.add(target)
+                        },
                         onBack = { settingsBackStack.removeAt(settingsBackStack.lastIndex) },
                     )
                 }

@@ -39,8 +39,13 @@ import com.peartv.launcher.domain.repository.LaunchOrigin
  * as Tier 3's rotating channel art (Decisions Log: "Live RenderEffect
  * backdrop blur").
  *
- * Always the first focus target on cold launch (§1.3), which is why item 0
- * owns a [FocusRequester] that fires as soon as this row enters composition.
+ * The first dock item is the focus target on true cold launch (§1.3, when
+ * [restoreFocusId] is `null`) — otherwise the tile matching [restoreFocusId]
+ * reclaims focus instead. This row is fully disposed and recomposed fresh
+ * every time `Screen.Settings` swaps back to `Screen.Launcher`
+ * (`MainActivity`'s own doc on that swap), which used to always refire the
+ * cold-launch behavior and silently discard whatever the user had focused
+ * before opening Settings — confirmed user-reported.
  *
  * [upFocusRequester], when non-null, is wired as every tile's explicit `up`
  * focus target (PRODUCT_SPEC.md §1.3's remedy for unreliable geometric focus
@@ -70,6 +75,7 @@ fun TopShelfRow(
     onTilePositioned: (LayoutCoordinates) -> Unit = {},
     tileWidth: Dp = TileWidth,
     blurRadius: Dp = DockBlurRadius,
+    restoreFocusId: String? = null,
 ) {
     val shape = RoundedCornerShape(TrayCornerRadius)
     val tint = glassTint()
@@ -131,6 +137,8 @@ fun TopShelfRow(
     }
 
     LaunchedEffect(Unit) {
-        focusRequesters.getOrNull(0)?.requestFocus()
+        val restoreIndex = restoreFocusId?.let { id -> apps.indexOfFirst { it.packageName == id } } ?: -1
+        val targetIndex = if (restoreIndex >= 0) restoreIndex else 0
+        focusRequesters.getOrNull(targetIndex)?.requestFocus()
     }
 }

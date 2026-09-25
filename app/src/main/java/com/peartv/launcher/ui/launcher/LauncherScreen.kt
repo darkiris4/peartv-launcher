@@ -136,6 +136,14 @@ fun LauncherScreen(
     // modal can spring out of it and back into it (§ folder spring-open).
     var openingFolderBounds by remember { mutableStateOf<androidx.compose.ui.geometry.Rect?>(null) }
 
+    // The id of a folder tile that just finished its close animation, so
+    // `AppGrid` can reclaim real focus on it — user-reported: without this,
+    // closing a folder left focus wherever Compose's default fallback
+    // happened to land, not back on the tile the folder actually opened
+    // from. Set from `FolderScreen`'s own `onClosed` (below); cleared once
+    // `AppGrid` reports the restore attempt made.
+    var closedFolderFocusId by remember { mutableStateOf<String?>(null) }
+
     // `ContentCarousel`'s explicit `up` target for `TopShelfRow`'s tiles (see
     // that composable's own doc) — Compose's default geometric focus-search
     // failed to route DPAD_UP from a dock tile into the carousel at all,
@@ -541,6 +549,8 @@ fun LauncherScreen(
                             rowZeroFocusRequesters = gridRowZeroFocusRequesters,
                             tileWidth = collapsedTileWidth,
                             rowSpacing = effectiveRowSpacing,
+                            restoreFocusId = closedFolderFocusId,
+                            onRestoreFocusHandled = { closedFolderFocusId = null },
                             modifier = Modifier.fillMaxSize(),
                         )
                     }
@@ -574,6 +584,7 @@ fun LauncherScreen(
                         onOpenOptionsMenu = viewModel::openOptionsMenu,
                         onTilePositioned = onTilePositioned,
                         tileWidth = collapsedTileWidth,
+                        restoreFocusId = focusedItemId,
                         modifier = Modifier
                             .align(Alignment.TopCenter)
                             .offset(y = trayOffsetY),
@@ -606,6 +617,7 @@ fun LauncherScreen(
                     backEnabled = openFolder != null && optionsMenu == null && pendingMerge == null,
                     onBack = viewModel::closeFolder,
                     onClosed = {
+                        closedFolderFocusId = folderRenderValue.id
                         folderRender = null
                         openingFolderBounds = null
                     },

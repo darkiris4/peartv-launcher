@@ -8,6 +8,8 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
@@ -67,6 +69,17 @@ import com.peartv.launcher.domain.repository.LaunchOrigin
  * here) since `TopShelfRow` needs the very same instances to point its own
  * tiles' `down` back at this grid's row 0 — see that composable's own doc.
  *
+ * A sparse dock (fewer apps than [columnCount]) has no tile directly above
+ * every grid column — [upFocusRequesters] simply runs out. The target index
+ * used to be `index.coerceAtMost(upFocusRequesters.size - 1)`, which sends
+ * every column past the dock's own last tile to that *same* last tile
+ * regardless of how far right it is — e.g. a 2-app dock under a 6-column
+ * grid sent Up from columns 2 through 5 all to dock index 1. Scaling by each
+ * column's relative position across the row instead
+ * (`index * upFocusRequesters.size / columnCount`) spreads those columns
+ * across whichever dock tiles actually exist, proportional to where the
+ * column sits, rather than bunching most of the row onto one tile.
+ *
  * [rowZeroFocusRequesters], unlike [upFocusRequesters], must actually be
  * *attached* here via `Modifier.focusRequester` (not just pointed at) —
  * `TopShelfRow`'s own tiles hold the other end, targeting these as their own
@@ -75,6 +88,16 @@ import com.peartv.launcher.domain.repository.LaunchOrigin
  * focus search actually tries to reach it — confirmed on-device (crashed on
  * every `DPAD_DOWN` from the dock) after an earlier pass wired these into
  * `TopShelfRow` as `down` targets but forgot this half entirely.
+ *
+ * [restoreFocusId], when non-null, claims real focus for the one item whose
+ * id matches it — `LauncherScreen` sets this to the id of a folder that just
+ * closed (`FolderScreen`'s own exit animation owns real focus the whole time
+ * it's open, so Compose's default fallback has nothing of this grid's to
+ * land on once it's gone; confirmed on-device it otherwise picked something
+ * arbitrary nearby instead of the folder's own tile). [onRestoreFocusHandled]
+ * fires once the attempt has been made (success or not — a scrolled-off-
+ * screen target isn't currently composed to focus at all) so the caller can
+ * clear it and not refire on an unrelated later recomposition.
  */
 @Composable
 fun AppGrid(
@@ -104,7 +127,16 @@ fun AppGrid(
     // between the dock and grid rows, not sit as one dead margin) —
     // horizontal spacing is untouched, only this row-to-row rhythm flexes.
     rowSpacing: Dp = TileSpacing,
+    restoreFocusId: String? = null,
+    onRestoreFocusHandled: () -> Unit = {},
 ) {
+    val restoreFocusRequester = remember { FocusRequester() }
+    LaunchedEffect(restoreFocusId) {
+        if (restoreFocusId != null) {
+            runCatching { restoreFocusRequester.requestFocus() }
+            onRestoreFocusHandled()
+        }
+    }
     LazyVerticalGrid(
         columns = GridCells.FixedSize(tileWidth),
         modifier = modifier,
@@ -120,11 +152,17 @@ fun AppGrid(
             val isDimmed = editMode.isActive && !isActiveDrag
             val isOptionsMenuTarget = optionsMenuTargetId == item.id
             val isRowZero = index < columnCount
-            val upTarget = if (isRowZero) upFocusRequesters.getOrNull(index.coerceAtMost(upFocusRequesters.size - 1)) else null
+            val upTarget = if (isRowZero && upFocusRequesters.isNotEmpty() && columnCount > 0) {
+                val proportionalIndex = (index * upFocusRequesters.size / columnCount).coerceIn(0, upFocusRequesters.size - 1)
+                upFocusRequesters.getOrNull(proportionalIndex)
+            } else {
+                null
+            }
             val ownFocusRequester = if (isRowZero) rowZeroFocusRequesters.getOrNull(index) else null
             val tileModifier = Modifier.width(tileWidth).aspectRatio(TileAspectRatio)
                 .let { base -> if (ownFocusRequester != null) base.focusRequester(ownFocusRequester) else base }
                 .let { base -> if (upTarget != null) base.focusProperties { up = upTarget } else base }
+                .let { base -> if (item.id == restoreFocusId) base.focusRequester(restoreFocusRequester) else base }
             val longPress: (() -> Unit)? = if (!editMode.isActive) onOpenOptionsMenu else null
             val positioned: (LayoutCoordinates) -> Unit = if (isOptionsMenuTarget) onTilePositioned else ({})
 

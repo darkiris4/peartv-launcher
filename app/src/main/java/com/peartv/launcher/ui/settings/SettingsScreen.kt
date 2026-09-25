@@ -106,6 +106,12 @@ fun SettingsScreen(
     onTransparencyEffectsChange: (Boolean) -> Unit,
     onRefreshMetadata: () -> Unit,
     onResetSettings: () -> Unit,
+    // Which of [route]'s own sub-routes was last navigated into from it, if
+    // any (`MainActivity`'s own map, keyed by parent route) — threaded down
+    // to whichever content pane owns more than one sub-page so it can give
+    // that row initial focus on Back instead of always its first row. `null`
+    // on a route with no children navigated into yet (a true cold landing).
+    focusedChildRoute: SettingsRoute?,
     onNavigate: (SettingsRoute) -> Unit,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
@@ -329,7 +335,10 @@ fun SettingsScreen(
                             LocalSettingsInitialFocusGraceActive provides initialFocusGraceActive,
                         ) {
                             when (targetRoute) {
-                                SettingsRoute.Root -> SettingsRootContent(onNavigate = onNavigate)
+                                SettingsRoute.Root -> SettingsRootContent(
+                                    onNavigate = onNavigate,
+                                    initialFocusRoute = focusedChildRoute ?: SettingsRoute.Appearance,
+                                )
 
                             SettingsRoute.Appearance -> AppearanceSettingsContent(
                                 themeMode = themeMode,
@@ -358,6 +367,7 @@ fun SettingsScreen(
                                 onOpenTvdbConfiguration = { onNavigate(SettingsRoute.TvdbConfiguration) },
                                 onOpenArtworkSource = { onNavigate(SettingsRoute.ArtworkSource) },
                                 onRefreshMetadata = onRefreshMetadata,
+                                initialFocusRoute = focusedChildRoute ?: SettingsRoute.MetadataProviders,
                             )
                             SettingsRoute.MetadataProviders -> MetadataProvidersSettingsContent(
                                 tmdbApiKey = tmdbApiKey,
@@ -382,6 +392,7 @@ fun SettingsScreen(
                                 onOpenAbout = { onNavigate(SettingsRoute.About) },
                                 onOpenLicenses = { onNavigate(SettingsRoute.Licenses) },
                                 onResetSettings = onResetSettings,
+                                initialFocusRoute = focusedChildRoute ?: SettingsRoute.About,
                             )
                             SettingsRoute.About -> AboutSettingsContent()
                             SettingsRoute.Licenses -> LicensesSettingsContent()
@@ -420,13 +431,24 @@ private fun SettingsIconPanel(modifier: Modifier = Modifier) {
     }
 }
 
-/** [SettingsRoute.Root] — the 5 top-level categories. */
+/**
+ * [SettingsRoute.Root] — the 5 top-level categories.
+ *
+ * [initialFocusRoute] picks which row claims [settingsInitialFocus] — user-
+ * reported bug fix: this used to be hardcoded to "Appearance" (the first
+ * row) regardless of how you got here, so Back from *any* sub-page always
+ * landed focus back at the top of the list instead of on the row you'd
+ * actually drilled in from. `SettingsScreen`'s own `focusedChildRoute` (its
+ * own doc) supplies the row to focus instead; only a true cold landing on
+ * Root (nothing navigated into yet) falls back to the first row.
+ */
 @Composable
 private fun SettingsRootContent(
     onNavigate: (SettingsRoute) -> Unit,
+    initialFocusRoute: SettingsRoute,
     modifier: Modifier = Modifier,
 ) {
-    val firstRowFocusRequester = remember { FocusRequester() }
+    val focusRequester = remember { FocusRequester() }
 
     Column(
         verticalArrangement = Arrangement.spacedBy(SettingsRowSpacing),
@@ -435,12 +457,28 @@ private fun SettingsRootContent(
         SettingsCategoryRow(
             text = "Appearance",
             onClick = { onNavigate(SettingsRoute.Appearance) },
-            modifier = Modifier.settingsInitialFocus(firstRowFocusRequester),
+            modifier = if (initialFocusRoute == SettingsRoute.Appearance) Modifier.settingsInitialFocus(focusRequester) else Modifier,
         )
-        SettingsCategoryRow(text = "Home Screen", onClick = { onNavigate(SettingsRoute.HomeScreen) })
-        SettingsCategoryRow(text = "Content Sources", onClick = { onNavigate(SettingsRoute.ContentSources) })
-        SettingsCategoryRow(text = "Screensaver", onClick = { onNavigate(SettingsRoute.Screensaver) })
-        SettingsCategoryRow(text = "System", onClick = { onNavigate(SettingsRoute.System) })
+        SettingsCategoryRow(
+            text = "Home Screen",
+            onClick = { onNavigate(SettingsRoute.HomeScreen) },
+            modifier = if (initialFocusRoute == SettingsRoute.HomeScreen) Modifier.settingsInitialFocus(focusRequester) else Modifier,
+        )
+        SettingsCategoryRow(
+            text = "Content Sources",
+            onClick = { onNavigate(SettingsRoute.ContentSources) },
+            modifier = if (initialFocusRoute == SettingsRoute.ContentSources) Modifier.settingsInitialFocus(focusRequester) else Modifier,
+        )
+        SettingsCategoryRow(
+            text = "Screensaver",
+            onClick = { onNavigate(SettingsRoute.Screensaver) },
+            modifier = if (initialFocusRoute == SettingsRoute.Screensaver) Modifier.settingsInitialFocus(focusRequester) else Modifier,
+        )
+        SettingsCategoryRow(
+            text = "System",
+            onClick = { onNavigate(SettingsRoute.System) },
+            modifier = if (initialFocusRoute == SettingsRoute.System) Modifier.settingsInitialFocus(focusRequester) else Modifier,
+        )
     }
 }
 

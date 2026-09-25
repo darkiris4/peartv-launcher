@@ -46,8 +46,23 @@ object GridLayoutEngine {
         if (!inDock && gridIndex == -1) return nodes
 
         when (direction) {
-            DpadDirection.Left -> swapWithin(if (inDock) dock else grid, if (inDock) dockIndex else gridIndex, (if (inDock) dockIndex else gridIndex) - 1)
-            DpadDirection.Right -> swapWithin(if (inDock) dock else grid, if (inDock) dockIndex else gridIndex, (if (inDock) dockIndex else gridIndex) + 1)
+            // Grid-only row-boundary guard: the dock is a single row, so a
+            // plain index swap is already correct there. The grid is
+            // multi-row, so an unguarded `gridIndex - 1`/`+ 1` at a row edge
+            // reaches into the *adjacent* row (e.g. index 6 in a 6-column
+            // grid is row 1 column 0; `- 1` lands on index 5, row 0 column
+            // 5) — a diagonal teleport instead of a no-op, unlike Up/Down's
+            // own explicit row/grid boundary checks just below.
+            DpadDirection.Left -> if (inDock) {
+                swapWithin(dock, dockIndex, dockIndex - 1)
+            } else if (gridIndex % columnCount != 0) {
+                swapWithin(grid, gridIndex, gridIndex - 1)
+            }
+            DpadDirection.Right -> if (inDock) {
+                swapWithin(dock, dockIndex, dockIndex + 1)
+            } else if (gridIndex % columnCount != columnCount - 1) {
+                swapWithin(grid, gridIndex, gridIndex + 1)
+            }
             DpadDirection.Up -> if (!inDock) {
                 val target = gridIndex - columnCount
                 if (target >= 0) swapWithin(grid, gridIndex, target) else crossIntoDock(dock, grid, gridIndex)
@@ -130,9 +145,13 @@ object GridLayoutEngine {
         val grid = nodes.filterNot { it.isDock }.sortedBy { it.position }
         val activeIndex = grid.indexOfFirst { it.stableId() == activeId }
         if (activeIndex == -1) return null
+        // Same row-boundary guard as `move`'s own Left/Right (see its doc) —
+        // without it, holding Right at a row's last column proposed merging
+        // with the first tile of the *next* row (index + 1), which sits
+        // diagonally below-left on screen, not to the right.
         val targetIndex = when (direction) {
-            DpadDirection.Left -> activeIndex - 1
-            DpadDirection.Right -> activeIndex + 1
+            DpadDirection.Left -> if (activeIndex % columnCount != 0) activeIndex - 1 else -1
+            DpadDirection.Right -> if (activeIndex % columnCount != columnCount - 1) activeIndex + 1 else -1
             DpadDirection.Up -> activeIndex - columnCount
             DpadDirection.Down -> activeIndex + columnCount
         }

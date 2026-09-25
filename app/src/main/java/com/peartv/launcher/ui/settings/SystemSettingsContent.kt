@@ -33,10 +33,14 @@ fun SystemSettingsContent(
     onOpenAbout: () -> Unit,
     onOpenLicenses: () -> Unit,
     onResetSettings: () -> Unit,
+    // See `ContentSourcesSettingsContent`'s identical param doc — which of
+    // this page's 2 sub-pages should get focus back on Back, instead of
+    // always "About PearTV" (the first row).
+    initialFocusRoute: SettingsRoute,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
-    val firstRowFocusRequester = remember { FocusRequester() }
+    val focusRequester = remember { FocusRequester() }
     var showResetConfirm by remember { mutableStateOf(false) }
 
     val versionName = remember {
@@ -52,10 +56,14 @@ fun SystemSettingsContent(
         SettingsCategoryRow(
             text = "About PearTV",
             onClick = onOpenAbout,
-            modifier = Modifier.settingsInitialFocus(firstRowFocusRequester),
+            modifier = if (initialFocusRoute == SettingsRoute.About) Modifier.settingsInitialFocus(focusRequester) else Modifier,
         )
         SettingsInfoRow(text = "Version", value = versionName)
-        SettingsCategoryRow(text = "Open Source Licenses", onClick = onOpenLicenses)
+        SettingsCategoryRow(
+            text = "Open Source Licenses",
+            onClick = onOpenLicenses,
+            modifier = if (initialFocusRoute == SettingsRoute.Licenses) Modifier.settingsInitialFocus(focusRequester) else Modifier,
+        )
         SettingsActionRow(
             text = "Reset Settings",
             onClick = { showResetConfirm = true },

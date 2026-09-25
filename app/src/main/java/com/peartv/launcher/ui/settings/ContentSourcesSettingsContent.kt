@@ -53,10 +53,16 @@ fun ContentSourcesSettingsContent(
     onOpenTvdbConfiguration: () -> Unit,
     onOpenArtworkSource: () -> Unit,
     onRefreshMetadata: () -> Unit,
+    // Which sub-route's own row should claim initial focus — see
+    // `SettingsRootContent`'s doc on the same param for why this exists:
+    // user-reported, Back from any of this page's 3 sub-pages used to always
+    // land focus on "Metadata Providers" (the first row) instead of the row
+    // you'd actually navigated in from.
+    initialFocusRoute: SettingsRoute,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
-    val firstRowFocusRequester = remember { FocusRequester() }
+    val focusRequester = remember { FocusRequester() }
 
     Column(
         verticalArrangement = Arrangement.spacedBy(SettingsRowSpacing),
@@ -65,18 +71,20 @@ fun ContentSourcesSettingsContent(
         SettingsCategoryRow(
             text = "Metadata Providers",
             onClick = onOpenMetadataProviders,
-            modifier = Modifier.settingsInitialFocus(firstRowFocusRequester),
+            modifier = if (initialFocusRoute == SettingsRoute.MetadataProviders) Modifier.settingsInitialFocus(focusRequester) else Modifier,
             description = "Connect external services used to fetch artwork and details for your apps",
         )
         SettingsCategoryRow(
             text = "TVDB Configuration",
             onClick = onOpenTvdbConfiguration,
+            modifier = if (initialFocusRoute == SettingsRoute.TvdbConfiguration) Modifier.settingsInitialFocus(focusRequester) else Modifier,
             description = "Connect a TVDB account for additional show and movie metadata",
         )
         SettingsCategoryRow(
             text = "Artwork Source",
             value = artworkSource.name,
             onClick = onOpenArtworkSource,
+            modifier = if (initialFocusRoute == SettingsRoute.ArtworkSource) Modifier.settingsInitialFocus(focusRequester) else Modifier,
             description = "Choose whether to use each app's own artwork, always fetch a cleaner online match, or let PearTV decide automatically",
         )
         SettingsActionRow(

@@ -67,8 +67,22 @@ const val SystemSettingsPackageName = "com.android.tv.settings"
  * §1.2 — how far the tile's own art layer slides *against* the focus tilt,
  * in px per degree of rotation. Small on purpose: the art should read as a
  * half-step behind the tile's glass surface, not detached from it.
+ *
+ * User-reported bug fix: at the old 0.7f, max translation (§1.2's
+ * `MaxTiltDegrees`, 14°, fires in full the instant a tile gains focus —
+ * `TvFocusable.kt`'s own tilt-snap doc) works out to ~9.8dp — more than
+ * [ArtParallaxOverscan]'s margin covers on this app's actual tile size
+ * (`TileWidth` 115dp / `TileHeight` ~69dp, `Dimens.kt`), so the art slid
+ * past its own overscanned edge and exposed a sliver of the tile's solid
+ * [AppTile]'s own `accentColor` fill underneath — visible as a flash of a
+ * curated brand color (e.g. Plex's yellow) "peeking behind" the artwork for
+ * the tilt's decay duration. Lowered so worst-case translation (`14° ×` this
+ * constant) stays under the *shorter* dimension's overscan margin
+ * (`(ArtParallaxOverscan - 1) / 2 * TileHeight`, the tighter of the two axes)
+ * with real headroom, rather than raising the overscan itself and making the
+ * art read as more zoomed-in at rest.
  */
-private const val ArtParallaxPxPerDegree = 0.7f
+private const val ArtParallaxPxPerDegree = 0.25f
 
 /** Overscan on the parallaxing art so its slide never uncovers the accent plate at an edge. */
 private const val ArtParallaxOverscan = 1.06f
